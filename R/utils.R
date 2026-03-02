@@ -262,3 +262,39 @@ if (F) {
                       filename="man/figures/logo.png")
 }
 
+
+# GPKG raster writer helper -----------------------------------------------
+
+writeRaster_fun <- function(x, filename,layer_name=NULL,NA_val = -9999.9999){
+  if (is.null(layer_name)) layer_name <- names(x)
+  x[x==NA_val] <- NA_val + .Machine$double.eps
+  x[is.na(x)] <- NA_val
+  terra::NAflag(x) <- NA_val
+
+  out <- terra::writeRaster(
+    x = x,
+    filename = filename,
+    NAflag = NA_val,
+    filetype = "GPKG",
+    datatype = "FLT4S",
+    gdal = c("APPEND_SUBDATASET=YES",
+             paste0("RASTER_TABLE=",layer_name,""),
+             paste0("RASTER_IDENTIFIER=",layer_name,""),
+             paste0("RASTER_DESCRIPTION=",layer_name,""),
+             paste0("FIELD_NAME=",layer_name,""),
+             paste0("UOM=",layer_name,""),
+             paste0("QUANTITY_DEFINITION=",layer_name,""),
+             "TILE_FORMAT=TIFF",
+             "METADATA_TABLES=YES",
+             "COMPRESS=LZW",
+             "TILED=YES",
+             "BAND_COUNT=1"
+    )
+  )
+
+  con<-DBI::dbConnect(RSQLite::SQLite(),filename)
+  DBI::dbExecute(con, paste0("UPDATE gpkg_2d_gridded_coverage_ancillary SET data_null = ",NA_val," WHERE tile_matrix_set_name = '",layer_name,"'"))
+  DBI::dbDisconnect(con)
+
+  return(out)
+}

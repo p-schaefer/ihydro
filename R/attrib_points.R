@@ -142,8 +142,8 @@ attrib_points<-function(
       tidyr::nest() %>%
       dplyr::ungroup() %>%
       dplyr::mutate(
-        attr=furrr::future_pmap(
-          #  attr=purrr::pmap(
+        #attr=furrr::future_pmap(
+        attr = purrr::pmap(
           list(
             x=data,
             p=list(p),
@@ -159,7 +159,7 @@ attrib_points<-function(
             OS_combine=list(OS_combine),
             loi_meta=list(loi_meta)
           ),
-          .options = furrr_options(globals = F),
+         # .options = furrr_options(globals = F),
           carrier::crate(
             function(x,
                      p,
@@ -191,7 +191,6 @@ attrib_points<-function(
                   yy=split(x$link_id,x$link_id)
                 ),
                 function(y,yy){
-
                   y<-sf::st_as_sf(y) %>%
                     dplyr::mutate(link_id=yy)
 
@@ -225,7 +224,7 @@ attrib_points<-function(
                                                                        loi_columns = loi_meta$loi_var_nms[loi_meta$loi_type=="num_rast"],
                                                                        loi_numeric=T,
                                                                        loi_numeric_stats = loi_numeric_stats,
-                                                                       roi = NULL,
+                                                                       roi = catch,
                                                                        roi_uid=yy,
                                                                        roi_uid_col = "pour_point_ID",
                                                                        distance_weights=file.path(temp_dir_sub_sub,paste0(yy,"_inv_distances.zip")),
@@ -240,7 +239,7 @@ attrib_points<-function(
                                                                        loi_columns = loi_meta$loi_var_nms[loi_meta$loi_type=="cat_rast"],
                                                                        loi_numeric=F,
                                                                        loi_numeric_stats = loi_numeric_stats,
-                                                                       roi = NULL,
+                                                                       roi = catch,
                                                                        roi_uid=yy,
                                                                        roi_uid_col = "pour_point_ID",
                                                                        distance_weights=file.path(temp_dir_sub_sub,paste0(yy,"_inv_distances.zip")),

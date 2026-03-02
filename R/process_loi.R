@@ -99,7 +99,7 @@ process_loi<-function(
     clip_region<-hydroweight::process_input(clip_region,
                                             input_name="clip_region",
                                             working_dir=temp_dir,
-                                            target=terra::vect("POLYGON ((0 -5, 10 0, 10 -10, 0 -5))",crs=terra::crs(dem)))
+                                            align_to=terra::vect("POLYGON ((0 -5, 10 0, 10 -10, 0 -5))",crs=terra::crs(dem)))
 
     terra::writeVector(clip_region,file.path(temp_dir,"clip_region.shp"),overwrite=T)
   }
@@ -257,8 +257,6 @@ process_loi<-function(
                                                options(scipen = 999)
                                                `%>%` <- magrittr::`%>%`
 
-
-
                                                temp_temp_dir<-file.path(temp_dir,basename(tempfile()))
                                                dir.create(temp_temp_dir)
 
@@ -266,19 +264,21 @@ process_loi<-function(
 
                                                if (all(is.na(lyr_variables))) lyr_variables<-NULL
 
+                                               #browser()
+
                                                suppressMessages(
                                                  output<-hydroweight::process_input(
                                                    input=unlist(lyr),
                                                    input_name = unlist(lyr_nms),
-                                                   variable_name=unlist(lyr_variables),
-                                                   target=file.path(temp_dir,"dem_final.tif"),
+                                                   #variable_names=unlist(lyr_variables),
+                                                   #target=file.path(temp_dir,"dem_final.tif"),
+                                                   input_variable_names = unlist(lyr_variables),
+                                                   align_to = file.path(temp_dir,"dem_final.tif"),
                                                    clip_region = file.path(temp_dir,"clip_region.shp"),
                                                    resample_type = resaml,
                                                    working_dir=temp_temp_dir
                                                  )
                                                )
-
-                                               #browser()
 
                                                out_files<-file.path(temp_dir,paste0(rln,"_",names(output),".tif"))
                                                names(out_files)<-names(output)
@@ -287,13 +287,14 @@ process_loi<-function(
                                                names(output)<-sapply(output,names)
 
                                                for (i in names(output)){
-                                                 output[[i]][is.na(output[[i]])]<-(-9999)
 
                                                  t1<-terra::writeRaster(
                                                    output[[i]],
                                                    file.path(temp_dir_save,paste0(names(output[[i]]),".tif")),
                                                    datatype="FLT4S",
-                                                   overwrite=T
+                                                   todisk = T,
+                                                   overwrite=T,
+                                                   gdal="COMPRESS=NONE"
                                                  )
 
 
@@ -323,7 +324,6 @@ process_loi<-function(
   if (verbose) message("Generating Outputs")
 
   future_proc_status <- future::futureOf(future_proc)
-  #browser()
   while(!future::resolved(future_proc_status)){
     Sys.sleep(0.5)
     fl<-list.files(temp_dir_save,".tif",full.names = T)
@@ -336,29 +336,12 @@ process_loi<-function(
       tot<-try(terra::rast(x),silent=T)
       if (inherits(tot,"try-error")) next()
       if (verbose) message(paste0("Writing: ",names(tot)))
-      #tot[is.na(tot)]<-(-9999)
 
-      tott<-try(terra::writeRaster(
-        tot,
-        output_filename,
-        NAflag=-9999,
-        filetype = "GPKG",
-        gdal = c("APPEND_SUBDATASET=YES",
-                 paste0("RASTER_TABLE=",names(tot),"")
-        )
-      ),silent=T)
+      tott<-try(writeRaster_fun(tot,output_filename),silent=T)
 
       if (inherits(tott,"try-error")) {
         if (!attr(tott,"condition")$message %in% c("stoi","stol")){
           stop(attr(tott,"condition")$message)
-          # tott<-terra::writeRaster(
-          #   tot,
-          #   NAflag=-9999,
-          #   output_filename,
-          #   filetype = "GPKG",
-          #   gdal = c("APPEND_SUBDATASET=YES",
-          #            paste0("RASTER_TABLE=",names(tot),"")
-          #   ))
         }
       }
 
@@ -367,8 +350,6 @@ process_loi<-function(
   }
 
   Sys.sleep(60)
-
-  #browser()
 
   if (length(future_proc$result$conditions)>0){
     err<-lapply(future_proc$result$conditions,function(x) x$condition)
@@ -381,37 +362,12 @@ process_loi<-function(
   fl<-list.files(temp_dir_save,".tif",full.names = T)
   for (x in fl) {
     tot<-terra::rast(x)
-
-    # tot<-try(terra::rast(x),silent=T)
-    # while (inherits(tot,"try-error")) {
-    #   sys.sleep(0.5)
-    #   tot<-try(terra::rast(x),silent=T)
-    # }
-    #tot[is.na(tot)]<-(-9999)
-
     if (verbose) message(paste0("Writing: ",names(tot)))
-
-    tott<-try(terra::writeRaster(
-      tot,
-      output_filename,
-      NAflag=-9999,
-      filetype = "GPKG",
-      gdal = c("APPEND_SUBDATASET=YES",
-               paste0("RASTER_TABLE=",names(tot),"")
-      )
-    ),silent=T)
+    tott<-try(writeRaster_fun(tot,output_filename),silent=T)
 
     if (inherits(tott,"try-error")) {
       if (!attr(tott,"condition")$message %in% c("stoi","stol")){
         stop(attr(tott,"condition")$message)
-        # tott<-terra::writeRaster(
-        #   tot,
-        #   NAflag=-9999,
-        #   output_filename,
-        #   filetype = "GPKG",
-        #   gdal = c("APPEND_SUBDATASET=YES",
-        #            paste0("RASTER_TABLE=",names(tot),"")
-        #   ))
       }
     }
 

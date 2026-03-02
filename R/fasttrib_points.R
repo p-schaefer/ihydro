@@ -454,7 +454,8 @@ extract_raster_attributes<-function(
 ){
   backend<-match.arg(backend)
 
-  sys.mem<-(memuse::Sys.meminfo()$freeram/n_cores)*0.9
+  #sys.mem<-(memuse::Sys.meminfo()$freeram/n_cores)*0.9
+  sys.mem<-memuse::Sys.meminfo()$freeram*0.9
   max_pixels_mem<-as.numeric(sys.mem)/12
   max_pixels_mem<-min(max_pixels_mem,3e+06) # this isn't quite working right
 
@@ -989,10 +990,6 @@ extract_raster_attributes<-function(
                    loi_numeric_stats2,
                    backend=c("tibble","data.table","SQLite")
 ){
-  # library(data.table)
-  # library(dtplyr)
-  # library(dplyr, warn.conflicts = FALSE)
-  #browser()
   stopifnot(!is.null(df))
   options(dplyr.summarise.inform = FALSE)
   options(scipen = 999)
@@ -1002,9 +999,7 @@ extract_raster_attributes<-function(
   backend<-match.arg(backend)
 
   df<-df %>%
-    dplyr::mutate(dplyr::across(tidyselect::where(is.numeric),~dplyr::if_else(is.nan(.),NA_real_,.))) %>%
-    dplyr::filter(dplyr::if_any(tidyselect::any_of("coverage_fraction"),~.x>0.5)) %>%
-    dplyr::select(-tidyselect::any_of("coverage_fraction"))
+    dplyr::mutate(dplyr::across(tidyselect::where(is.numeric),~dplyr::if_else(is.nan(.),NA_real_,.)))
 
   loi_meta2<-dplyr::filter(loi_meta2,
                            loi_var_nms %in% loi_cols2,

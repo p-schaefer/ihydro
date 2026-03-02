@@ -171,32 +171,13 @@ prep_weights<-function(
                                            clean_tempfiles=F,
                                            return_products = T,
                                            wrap_return_products=F,
-                                           save_output=F,
-                                           temp_dir=temp_dir_sub2
+                                           save_output=F#,
+                                           #temp_dir=temp_dir_sub2
       )
     )
 
     for (i in hw_streams) {
-
-      t1<-terra::writeRaster(
-        i,
-        file.path(temp_dir_sub2,paste0(names(i),".tif")),
-        datatype="FLT4S",
-        overwrite=T
-      )
-
-      t1[is.na(t1)]<-(-9999)
-
-      terra::writeRaster(
-        t1,
-        output_filename$outfile,
-        NAflag=-9999,
-        filetype = "GPKG",
-        gdal = c("APPEND_SUBDATASET=YES",
-                 paste0("RASTER_TABLE=",gsub("_inv","",names(t1)),"")
-        )
-      )
-
+      o <- writeRaster_fun(i,output_filename$outfile)
     }
 
     rm(hw_streams)
@@ -358,18 +339,21 @@ prep_weights<-function(
                                                  clean_tempfiles=F,
                                                  return_products = T,
                                                  wrap_return_products=F,
-                                                 save_output=F,
-                                                 temp_dir=temp_dir_sub_sub)
+                                                 save_output=F#,
+                                                 #temp_dir=temp_dir_sub_sub
+                  )
                 )
 
                 for (i in hw_o) {
-                  i[is.na(i)]<-(-9999)
+                  #i[is.na(i)]<-(-9999)
 
                   t1<-terra::writeRaster(
                     i,
                     file.path(temp_dir_sub2,paste0(names(i),"_unn_group",y$unn_group[[1]],".tif")),
                     datatype="FLT4S",
-                    overwrite=T
+                    todisk = T,
+                    overwrite=T,
+                    gdal="COMPRESS=NONE"
                   )
 
 
@@ -387,110 +371,94 @@ prep_weights<-function(
             }))
       })
 
-      #progressr::with_progress(enable=T,{
-      p <- progressr::progressor(steps = (length(target_O_sub)*length(weighting_scheme_o)))
-      future_proc_status <- future::futureOf(future_proc)
+      progressr::with_progress(enable=T,{
+        p <- progressr::progressor(steps = (length(target_O_sub)*length(weighting_scheme_o)))
+        future_proc_status <- future::futureOf(future_proc)
 
-      while(!future::resolved(future_proc_status)){
-        Sys.sleep(0.2)
+        while(!future::resolved(future_proc_status)){
+          Sys.sleep(0.2)
+          fl_un<-list.files(temp_dir_sub2,full.names = T)
+          fl_un<-fl_un[grepl(paste0(weighting_scheme_o,collapse = "|"),fl_un)]
+
+          fl_un_time<-file.mtime(fl_un)
+          fl_un<-fl_un[fl_un_time<(Sys.time()-60)]
+
+          if (length(fl_un)>0) {
+            rast_all<-purrr::map(fl_un,function(y) {
+              Sys.sleep(0.2)
+              x<-try(terra::rast(y),
+                     silent = T)
+
+              if (inherits(x,"try-error")) return(NULL)
+
+
+              ot <- try(
+                writeRaster_fun(x,
+                                output_filename$outfile,
+                                gsub("\\.tif$","",basename(y))
+                                ),
+                silent=T)
+
+              if (inherits(ot,"try-error")) {
+                if (!attr(ot,"condition")$message %in% c("stoi","stol")){
+                  stop(attr(ot,"condition")$message)
+                }
+              }
+
+              p()
+              return(y)
+            })
+
+            rast_all<-rast_all[!sapply(rast_all,is.null)]
+
+            try(suppressWarnings(file.remove(unlist(rast_all))),silent=T)
+
+          }
+
+        }
+
+        Sys.sleep(60)
+
+        if (length(future_proc$result$conditions)>0){
+          err<-lapply(future_proc$result$conditions,function(x) x$condition)
+          err<-err[sapply(err,function(x) inherits(x,"error"))]
+          if (length(err)>0){
+            return(err)
+          }
+        }
+
         fl_un<-list.files(temp_dir_sub2,full.names = T)
         fl_un<-fl_un[grepl(paste0(weighting_scheme_o,collapse = "|"),fl_un)]
 
-        fl_un_time<-file.mtime(fl_un)
-        fl_un<-fl_un[fl_un_time<(Sys.time()-60)]
-
         if (length(fl_un)>0) {
           rast_all<-purrr::map(fl_un,function(y) {
-            Sys.sleep(0.2)
-            x<-try(terra::rast(y),
-                   silent = T)
 
-            if (inherits(x,"try-error")) return(NULL)
+            x<-terra::rast(y)
 
-            ot<-try(terra::writeRaster(
-              x,
-              NAflag=-9999,
-              output_filename$outfile,
-              filetype = "GPKG",
-              gdal = c("APPEND_SUBDATASET=YES",
-                       paste0("RASTER_TABLE=",gsub(".tif","",basename(y)),"")
-              )
-            ),silent=T)
+            ot <- try(
+              writeRaster_fun(x,
+                              output_filename$outfile,
+                              gsub("\\.tif$","",basename(y))
+                              ),
+              silent=T)
 
             if (inherits(ot,"try-error")) {
               if (!attr(ot,"condition")$message %in% c("stoi","stol")){
                 stop(attr(ot,"condition")$message)
-                # ot<-terra::writeRaster(
-                #   x,
-                #   NAflag=-9999,
-                #   output_filename$outfile,
-                #   filetype = "GPKG",
-                #   gdal = c("APPEND_SUBDATASET=YES",
-                #            paste0("RASTER_TABLE=",gsub(".tif","",basename(y)),"")
-                #   ))
               }
             }
-
 
             p()
             return(y)
           })
-
           rast_all<-rast_all[!sapply(rast_all,is.null)]
 
           try(suppressWarnings(file.remove(unlist(rast_all))),silent=T)
-
         }
 
-      }
 
-      Sys.sleep(60)
-
-      if (length(future_proc$result$conditions)>0){
-        err<-lapply(future_proc$result$conditions,function(x) x$condition)
-        err<-err[sapply(err,function(x) inherits(x,"error"))]
-        if (length(err)>0){
-          #if (verbose) browser()
-          return(err)
-          #stop(paste0(unlist(err)))
-        }
-      }
-
-      fl_un<-list.files(temp_dir_sub2,full.names = T)
-      fl_un<-fl_un[grepl(paste0(weighting_scheme_o,collapse = "|"),fl_un)]
-
-      if (length(fl_un)>0) {
-        rast_all<-purrr::map(fl_un,function(y) {
-
-          x<-terra::rast(y)
-
-          ot<-try(terra::writeRaster(
-            x,
-            NAflag=-9999,
-            output_filename$outfile,
-            filetype = "GPKG",
-            gdal = c("APPEND_SUBDATASET=YES",
-                     paste0("RASTER_TABLE=",gsub(".tif","",basename(y)),"")
-            )
-          ),silent=T)
-
-          if (inherits(ot,"try-error")) {
-            if (!attr(ot,"condition")$message %in% c("stoi","stol")){
-              stop(attr(ot,"condition")$message)
-            }
-          }
-
-          p()
-          return(y)
-        })
-        rast_all<-rast_all[!sapply(rast_all,is.null)]
-
-        try(suppressWarnings(file.remove(unlist(rast_all))),silent=T)
-      }
-
-
-      t1<-try((unlink(temp_dir_sub2,force = T,recursive = T)),silent=T)
-      #})
+        t1<-try((unlink(temp_dir_sub2,force = T,recursive = T)),silent=T)
+      })
 
       if (verbose) message("Saving meta data")
 
