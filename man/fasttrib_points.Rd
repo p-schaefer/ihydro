@@ -54,7 +54,7 @@ fasttrib_points(
 
 \item{verbose}{logical.}
 
-\item{backend}{character. One of "data.table" or "SQLite"}
+\item{backend}{character. One of "tibble", "data.table" or "SQLite"}
 
 \item{SQLdb_path}{character. If backend = "SQLite" directory to store temporary SQL tables, or ":memory:" for an in-memory SQL table}
 }

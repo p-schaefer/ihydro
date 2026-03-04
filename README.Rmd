@@ -115,18 +115,21 @@ save_dir <- tempdir()
 
 
 ## Import toy_dem from openSTARS package
-# devtools::install_github("MiKatt/openSTARS", ref = "dev")
+download.file("https://github.com/MiKatt/openSTARS/archive/refs/heads/master.zip", file.path(save_dir,"openSTARS.zip"))
+unzip(file.path(save_dir,"openSTARS.zip"), exdir = file.path(save_dir,"openSTARS"))
 
-ot<-system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS") %>% 
+ex_loc <- file.path(save_dir,"openSTARS","openSTARS-master","inst","extdata","nc")
+
+ot<-file.path(ex_loc,"elev_ned_30m.tif") %>% 
   rast() 
 
-crs(ot)<-crs(rast(system.file("extdata", "nc", "landuse_r.tif", package = "openSTARS")))
+crs(ot)<-crs(rast(file.path(ex_loc,"landuse_r.tif")))
 writeRaster(ot,file.path(save_dir, "toy_dem.tif"),overwrite=T)
 
 toy_dem<-rast(file.path(save_dir, "toy_dem.tif"))
 
 ## Identify some sampling points
-system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS") %>% 
+file.path(ex_loc,"sites_nc.shp") %>% 
   vect() %>% 
   st_as_sf() %>% 
   st_transform(st_crs(toy_dem)) %>% 
@@ -156,7 +159,7 @@ output_filename_hydro<-file.path(save_dir,"Processed_Hydrology.gpkg")
 # flow accumulation threshold
 hydro_out<-process_flowdir(
   dem=toy_dem,
-  burn_streams=system.file("extdata", "nc", "streams.shp", package = "openSTARS"),
+  burn_streams=file.path(ex_loc, "streams.shp"),
   burn_depth=5,
   min_length=3,
   depression_corr="breach",
@@ -203,7 +206,7 @@ ihydro_layers(hydro_out_new)
 ### 3.3 Generate vector geospatial analysis products with `generate_vectors()`
 
 This function combines `generate_subbasins()` and `attrib_streamline()` to produce subcatchment polygons, stream lines, stream links (downstream most points along each subcatchment), stream points (stream line represented as individual points).
- 
+
 Typically, observed responses are measured at discrete sampling locations along the stream network. If the location information is to be preserved (i.e., if samples are upstream and downstream of a particular effluent outflow), the sampling points must be incorporated into the network. This is done by splitting stream lines and subcatchments at these points.
 
 ```{r, fig.width = 7, fig.height = 7, message = FALSE, error = FALSE, warning = FALSE}
@@ -250,8 +253,8 @@ ihydro_layers(hydro_out)
 #                          #  beyond snap distance are removed, with a warning if
 #                          #  break_on_noSnap == F. 
 
-tm_shape(hydro_out$subbasins) + tm_polygons(col="link_id",palette = "viridis",alpha =0.2,legend.show=F) +
-  tm_shape(hydro_out$stream_lines) + tm_lines(col="blue",alpha =0.5,legend.show=F,lwd =3) +
+tm_shape(hydro_out$subbasins) + tm_polygons(col="link_id",palette = "viridis",fill_alpha =0.2,legend.show=F) +
+  tm_shape(hydro_out$stream_lines) + tm_lines(col="blue",col_alpha =0.5,legend.show=F,lwd =3) +
   tm_shape(hydro_out$links) + tm_dots(col="yellow",legend.show=F,size=0.15,border.col="black",border.alpha=1)
 
 ```
@@ -306,17 +309,17 @@ head(hydro_out$ds_flowpaths %>% arrange(destination_link_id))
 
 us_647<-hydro_out$us_flowpaths %>%
   filter(pour_point_id == "647") # get all upstream link_ids from link_id 647
-ds_101.1<-hydro_out$ds_flowpaths %>%
-  filter(origin_link_id == "101.1") # get all downstream link_ids from 
+ds_99.1<-hydro_out$ds_flowpaths %>%
+  filter(origin_link_id == "99.1") # get all downstream link_ids from 
 #                                   # link_id 101.1 (this corresponds with site_id = 62)
 
 lines_out<-hydro_out$stream_lines %>% 
   filter(link_id %in% us_647$origin_link_id | 
-           link_id %in% ds_101.1$destination_link_id  
+           link_id %in% ds_99.1$destination_link_id  
   )
 sub_out<-hydro_out$subbasins %>% 
   filter(link_id %in% us_647$origin_link_id | 
-           link_id %in% ds_101.1$destination_link_id 
+           link_id %in% ds_99.1$destination_link_id 
   )
 
 tm_shape(sub_out) + tm_polygons(col="white",alpha =0.2,legend.show=F) +
@@ -372,7 +375,7 @@ output_filename_hydro_sparse<-file.path(save_dir,"Processed_Hydrology_sparse.gpk
 hydro_out_sparse<-process_hydrology(
   dem=toy_dem,
   output_filename=output_filename_hydro_sparse,
-  # burn_streams=system.file("extdata", "nc", "streams.shp", package = "openSTARS"),
+  # burn_streams=file.path(ex_loc,"streams.shp"),
   burn_depth=5,
   depression_corr="breach",
   threshold=500L,
@@ -434,7 +437,9 @@ ihydro_layers(hydro_out)
 
 hydro_out$pwise_dist<-bind_rows(collect(tbl(con,"fcon_pwise_dist")) %>% mutate(dist_type="Flow Connected"),
                                 collect(tbl(con,"funcon_pwise_dist")) %>% mutate(dist_type="Flow Unconnected")
-)
+) %>% 
+  group_by(origin, destination, dist_type) %>% 
+  summarise(across(everything(),min))
 
 DBI::dbDisconnect(con)
 
@@ -444,8 +449,7 @@ p1<-hydro_out$stream_lines %>%
   mutate(link_id=as.character(link_id)) %>% 
   left_join(hydro_out$pwise_dist %>%
               filter(dist_type=="Flow Connected") %>% 
-              filter(origin=="1048") %>% 
-              mutate(directed_path_length=log(directed_path_length)),
+              filter(origin=="1048"),
             by=c("link_id"="destination")) %>% 
   tm_shape() +
   tm_lines(col="directed_path_length",alpha =1,legend.show=T,lwd =2,palette = "viridis",style="cont")+
@@ -457,8 +461,7 @@ p2<-hydro_out$stream_lines %>%
   mutate(link_id=as.character(link_id)) %>% 
   left_join(hydro_out$pwise_dist %>% 
               filter(origin=="99") %>%
-              filter(dist_type=="Flow Unconnected") %>% 
-              mutate(undirected_path_length=log(undirected_path_length)),  
+              filter(dist_type=="Flow Unconnected"), 
             by=c("link_id"="destination"),
             multiple="all") %>% 
   tm_shape() +
@@ -641,14 +644,14 @@ Layers of interest (loi) represent the features on the landscape we are interest
 ```{r, fig.width = 7, fig.height = 7, message = FALSE, error = FALSE, warning = FALSE}
 
 ## Predictors from openSTARS
-system.file("extdata", "nc", "landuse_r.tif", package = "openSTARS") %>% 
+file.path(ex_loc,"landuse_r.tif") %>% 
   rast() %>% 
   setNames("LC") %>% 
   writeRaster(file.path(save_dir, "LC.tif"),overwrite=T)
 
 landuse_r_path <-file.path(save_dir, "LC.tif") 
-geology_path<-system.file("extdata", "nc", "geology.shp", package = "openSTARS")
-pointsources_path<-system.file("extdata", "nc", "pointsources.shp", package = "openSTARS")
+geology_path<-file.path(ex_loc,"geology.shp") 
+pointsources_path<-file.path(ex_loc,"pointsources.shp") 
 
 read_sf(pointsources_path) %>% 
   mutate(pointsource="pontsrc") %>% 
@@ -793,9 +796,9 @@ We can access the weighting layers and weighted attribute layers (if return_prod
 plot(
   rast(
     list(
-      rast(final_attributes_sub_slow$products[[2]]$iFLS)%>%
+      rast(final_attributes_sub_slow$products[[2]]$iFLS) %>%
         setNames("iFLS Weighting"),
-      log10(rast(final_attributes_sub_slow$products[[2]]$HAiFLO))%>%
+      log10(rast(final_attributes_sub_slow$products[[2]]$HAiFLO)) %>%
         setNames("log10-HAiFLO Weighting"),
       rast(final_attributes_sub_slow$products[[2]]$iFLS_num) %>%
         setNames("iFLS Weighted Slope"),
@@ -824,12 +827,12 @@ fasttrib_points_time_small<-system.time(
     sample_points=c("1","25","80"),
     link_id=NULL,
     target_o_type=c("point"),
-    weighting_scheme =  c("lumped",  "iFLS", "HAiFLS","iFLO",  "HAiFLO"),
+    weighting_scheme =  c("lumped",  "iFLS", "HAiFLS","iFLO",  "HAiFLO"),#
     loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
     inv_function = function(x) {
       (x * 0.001 + 1)^-1
     },
-    temp_dir=NULL,
+    #temp_dir=NULL,
     verbose=T
   )
 )
@@ -887,7 +890,10 @@ In order to make predictions across the landscape, we will need to calculate our
 dw_time<-system.time(
   Processed_HW<-prep_weights(
     input=hydro_out,
-    output_filename=file.path(tempfile(),"Processed_HW_out.gpkg")
+    output_filename=file.path(tempfile(),"Processed_HW_out.gpkg"),
+    weighting_scheme = c("iFLS", "iFLO",  "HAiFLO",  "HAiFLS"),
+    target_o_type = c("point"),
+    sample_points=hydro_out$snapped_points$site_id
   )
 )
 
@@ -932,7 +938,7 @@ attrib_points_time_big<-system.time(
       (x * 0.001 + 1)^-1
     },
     temp_dir=NULL,
-    return_products=T,
+    return_products=F,
     verbose=F
   )
 )
@@ -1141,7 +1147,7 @@ set.seed(1234)
 
 par_info<-hardhat::extract_parameter_set_dials(rf_mod) %>% 
   finalize(bake(prep(recip,comb_data),comb_data)) %>% 
-  update(trees=dials::trees(range=c(20L,4000L))) # Must increase the default number of trees to get quantile predictions
+  update(trees=dials::trees(range=c(100L,1000L))) # Must increase the default number of trees to get quantile predictions
 
 final_out<-map(cv_strats,
                ~tune_grid(wf,
@@ -1160,9 +1166,9 @@ stopCluster(cl)
 # show the best possible accuracy for predicting beyond the spatial extents of 
 # Where the data was collected.
 
-map_dfr(final_out,show_best,5,metric = "mae",.id="Cross-validation strategy")
+map_dfr(final_out,show_best,n=5,metric = "mae",.id="Cross-validation strategy")
 
-map_dfr(final_out,show_best,5,metric = "rsq",.id="Cross-validation strategy")
+map_dfr(final_out,show_best,n=5,metric = "rsq",.id="Cross-validation strategy")
 
 ```
 
@@ -1296,7 +1302,7 @@ Streams %>%
   ) %>% 
   mutate(total_strm_len=sum(strm_len)) %>% 
   group_by(`Prediction Groups`) %>% 
-  summarize(`% of Total Stream Length`=sum(strm_len)/total_strm_len*100) %>% 
+  summarize(`% of Total Stream Length`=(sum(strm_len)/total_strm_len[[1]]*100)) %>% 
   distinct() %>% 
   ggplot(aes(x="",y=`% of Total Stream Length`,fill=`Prediction Groups`))+
   geom_bar(width = 1, stat = "identity")+
@@ -1400,13 +1406,13 @@ imp_weighting_gp<-map(explainer_list,
 
 cowplot::plot_grid(
   plot(imp_pred_gp,
-     bar_width =7,
-     title = NULL,
-     subtitle=""),
+       bar_width =7,
+       title = NULL,
+       subtitle=""),
   plot(imp_weighting_gp,
-     bar_width =7,
-     title = NULL,
-     subtitle=""),
+       bar_width =7,
+       title = NULL,
+       subtitle=""),
   ncol=2
 )
 
