@@ -24,6 +24,12 @@ get_catchment<-function(
   options(dplyr.summarise.inform = FALSE,future.rng.onMisuse="ignore")
   whitebox::wbt_options(exe_path=whitebox::wbt_exe_path(),verbose=F)
 
+  n_cores<-future::nbrOfWorkers()
+  if (is.infinite(n_cores)) n_cores<-future::availableCores(logical = F)
+  if (n_cores==0) n_cores<-1
+  max_cores_opt<-getOption("parallelly.maxWorkers.localhost")
+  options(parallelly.maxWorkers.localhost = n_cores)
+
   ihydro_tbl<-ihydro_layers(input)
 
   existing_catch<-tibble::tibble(link_id=NA_character_)[F,]
@@ -147,6 +153,8 @@ get_catchment<-function(
         )
       )
   }
+
+  options(parallelly.maxWorkers.localhost=max_cores_opt)
 
   return(sf::st_as_sf(out))
 

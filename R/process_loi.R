@@ -114,11 +114,13 @@ process_loi<-function(
       fp<-file.path(temp_dir,paste0(basename(tempfile()),".shp"))
       if (inherits(x,"SpatVector")) x<-sf::st_as_sf(x)
       sf::write_sf(x,fp)
+      x<-fp
       #return(terra::wrap(terra::vect(x)))
     }
     if (inherits(x,c("SpatRaster"))) {
       fp<-file.path(temp_dir,paste0(basename(tempfile()),".tif"))
       terra::writeRaster(x,fp)
+      x<-fp
       #return(terra::wrap(x))
     }
     return(x)
@@ -130,11 +132,13 @@ process_loi<-function(
       fp<-file.path(temp_dir,paste0(basename(tempfile()),".shp"))
       if (inherits(x,"SpatVector")) x<-sf::st_as_sf(x)
       sf::write_sf(x,fp)
+      x<-fp
       #return(terra::wrap(terra::vect(x)))
     }
     if (inherits(x,c("SpatRaster"))) {
       fp<-file.path(temp_dir,paste0(basename(tempfile()),".tif"))
       terra::writeRaster(x,fp)
+      x<-fp
       #return(terra::wrap(x))
     }
     return(x)
@@ -172,12 +176,15 @@ process_loi<-function(
   n_cores<-future::nbrOfWorkers()
   if (is.infinite(n_cores)) n_cores<-future::availableCores(logical = F)
   if (n_cores==0) n_cores<-1
+  max_cores_opt<-getOption("parallelly.maxWorkers.localhost")
+  options(parallelly.maxWorkers.localhost = n_cores)
 
   n_cores_2<-n_cores
 
   if (n_cores>1) {
     n_cores_2<-n_cores_2-1
-    oplan <- future::plan(list(future::tweak(future::multisession, workers = 2), future::tweak(future::multisession, workers = n_cores_2)))
+    oplan <- future::plan(list(future::tweak(future::multisession, workers = 2),
+                               future::tweak(future::multisession, workers = n_cores_2)))
     on.exit(future::plan(oplan), add = TRUE)
   }
 
@@ -224,6 +231,7 @@ process_loi<-function(
           ))
 
     future_proc<-future::future({
+      options(parallelly.maxWorkers.localhost = n_cores_2+1)
       ot<-furrr::future_pmap(ip,
                              #purrr::pmap(ip,
                              .options=furrr::furrr_options(globals = F),
@@ -327,6 +335,7 @@ process_loi<-function(
   while(!future::resolved(future_proc_status)){
     Sys.sleep(0.5)
     fl<-list.files(temp_dir_save,".tif",full.names = T)
+    fl<-fl[grepl(".tif$",fl)]
 
     fl_un_time<-file.mtime(fl)
     fl<-fl[fl_un_time<Sys.time()-60]
@@ -360,6 +369,8 @@ process_loi<-function(
   }
 
   fl<-list.files(temp_dir_save,".tif",full.names = T)
+  fl<-fl[grepl(".tif$",fl)]
+
   for (x in fl) {
     tot<-terra::rast(x)
     if (verbose) message(paste0("Writing: ",names(tot)))
@@ -427,6 +438,8 @@ process_loi<-function(
   suppressWarnings(file.remove(list.files(temp_dir,full.names = T,recursive = T)))
 
   class(output)<-"ihydro"
-  return(output)
 
+  options(parallelly.maxWorkers.localhost=max_cores_opt)
+
+  return(output)
 }

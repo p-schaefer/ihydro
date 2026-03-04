@@ -131,7 +131,6 @@ attrib_points<-function(
     )
   }
 
-  #browser()
   if (verbose) message("Calculating Attributes")
   progressr::with_progress(enable=verbose,{
     p <- progressr::progressor(steps = nrow(target_O))
@@ -142,8 +141,8 @@ attrib_points<-function(
       tidyr::nest() %>%
       dplyr::ungroup() %>%
       dplyr::mutate(
-        #attr=furrr::future_pmap(
-        attr = purrr::pmap(
+        attr=furrr::future_pmap(
+          #attr = purrr::pmap(
           list(
             x=data,
             p=list(p),
@@ -159,118 +158,123 @@ attrib_points<-function(
             OS_combine=list(OS_combine),
             loi_meta=list(loi_meta)
           ),
-         # .options = furrr_options(globals = F),
-          carrier::crate(
-            function(x,
-                     p,
-                     input,
-                     loi_file,
-                     weighting_scheme,
-                     loi_cols,
-                     loi_numeric_stats,
-                     temp_dir_sub,
-                     return_products,
-                     inv_function,
-                     clip_region,
-                     OS_combine,
-                     loi_meta
-            ){
-              suppressPackageStartupMessages(library(sf))
-              options(dplyr.summarise.inform = FALSE)
-              options(scipen = 999)
-              `%>%` <- magrittr::`%>%`
-              #browser()
+          .options = furrr_options(globals = F),
+          #carrier::crate(
+          function(x,
+                   p,
+                   input,
+                   loi_file,
+                   weighting_scheme,
+                   loi_cols,
+                   loi_numeric_stats,
+                   temp_dir_sub,
+                   return_products,
+                   inv_function,
+                   clip_region,
+                   OS_combine,
+                   loi_meta
+          ){
+            suppressPackageStartupMessages(library(sf))
+            options(dplyr.summarise.inform = FALSE)
+            options(scipen = 999)
+            `%>%` <- magrittr::`%>%`
 
-              target_S <- terra::rast(file.path(temp_dir_sub,"dem_streams_d8.tif"))
-              dem <- terra::rast(file.path(temp_dir_sub,"dem_final.tif"))
-              flow_accum <- terra::rast(file.path(temp_dir_sub,"dem_accum_d8.tif"))
+            target_S <- terra::rast(file.path(temp_dir_sub,"dem_streams_d8.tif"))
+            dem <- terra::rast(file.path(temp_dir_sub,"dem_final.tif"))
+            flow_accum <- terra::rast(file.path(temp_dir_sub,"dem_accum_d8.tif"))
 
-              purrr::pmap_dfr(
-                list(
-                  y=split(x$geom,x$link_id),
-                  yy=split(x$link_id,x$link_id)
-                ),
-                function(y,yy){
-                  y<-sf::st_as_sf(y) %>%
-                    dplyr::mutate(link_id=yy)
+            purrr::pmap_dfr(
+              list(
+                y=split(x$geom,x$link_id),
+                yy=split(x$link_id,x$link_id)
+              ),
+              function(y,yy){
 
-                  temp_dir_sub_sub<-file.path(temp_dir_sub,basename(tempfile()))
-                  dir.create(temp_dir_sub_sub)
+                y<-sf::st_as_sf(y) %>%
+                  dplyr::mutate(link_id=yy)
 
-                  catch<-ihydro::get_catchment(input,link_id =yy)
+                temp_dir_sub_sub<-file.path(temp_dir_sub,basename(tempfile()))
+                dir.create(temp_dir_sub_sub)
 
+                catch<-ihydro::get_catchment(input,link_id =yy)
+
+                suppressMessages(
+                  hw<-hydroweight::hydroweight(hydroweight_dir=temp_dir_sub_sub,
+                                               target_S = target_S,
+                                               target_O = y,
+                                               target_uid = yy,
+                                               OS_combine = OS_combine,
+                                               dem=dem,
+                                               flow_accum = flow_accum,
+                                               clip_region=catch,
+                                               weighting_scheme = weighting_scheme,
+                                               inv_function = inv_function,
+                                               return_products=return_products,
+                                               wrap_return_products = T,
+                                               save_output = T,
+                                               clean_tempfiles = T)
+                )
+
+                hw_attr_num<-NULL
+                hw_attr_cat<-NULL
+                if (any(loi_meta$loi_type=="num_rast")) {
                   suppressMessages(
-                    hw<-hydroweight::hydroweight(hydroweight_dir=temp_dir_sub_sub,
-                                                 target_S = target_S,
-                                                 target_O = y,
-                                                 target_uid = yy,
-                                                 OS_combine = OS_combine,
-                                                 dem=dem,
-                                                 flow_accum = flow_accum,
-                                                 clip_region=catch,
-                                                 weighting_scheme = weighting_scheme,
-                                                 inv_function = inv_function,
-                                                 return_products=return_products,
-                                                 wrap_return_products = T,
-                                                 save_output = T,
-                                                 clean_tempfiles = T)
+                    hw_attr_num<-hydroweight::hydroweight_attributes(loi=terra::rast(loi_file$outfile,lyrs=loi_meta$loi_var_nms[loi_meta$loi_type=="num_rast"]),
+                                                                     loi_columns = loi_meta$loi_var_nms[loi_meta$loi_type=="num_rast"],
+                                                                     loi_numeric=T,
+                                                                     loi_numeric_stats = loi_numeric_stats,
+                                                                     roi = catch,
+                                                                     roi_uid=yy,
+                                                                     roi_uid_col = "pour_point_ID",
+                                                                     distance_weights=file.path(temp_dir_sub_sub,paste0(yy,"_inv_distances.zip")),
+                                                                     remove_region = clip_region,
+                                                                     return_products = return_products)
                   )
+                }
 
-                  hw_attr_num<-NULL
-                  hw_attr_cat<-NULL
-                  if (any(loi_meta$loi_type=="num_rast")) {
-                    suppressMessages(
-                      hw_attr_num<-hydroweight::hydroweight_attributes(loi=terra::rast(loi_file$outfile,lyrs=loi_meta$loi_var_nms[loi_meta$loi_type=="num_rast"]),
-                                                                       loi_columns = loi_meta$loi_var_nms[loi_meta$loi_type=="num_rast"],
-                                                                       loi_numeric=T,
-                                                                       loi_numeric_stats = loi_numeric_stats,
-                                                                       roi = catch,
-                                                                       roi_uid=yy,
-                                                                       roi_uid_col = "pour_point_ID",
-                                                                       distance_weights=file.path(temp_dir_sub_sub,paste0(yy,"_inv_distances.zip")),
-                                                                       remove_region = clip_region,
-                                                                       return_products = return_products)
-                    )
-                  }
-
-                  if (any(loi_meta$loi_type=="cat_rast")) {
-                    suppressMessages(
-                      hw_attr_cat<-hydroweight::hydroweight_attributes(loi=terra::rast(loi_file$outfile,lyrs=loi_meta$loi_var_nms[loi_meta$loi_type=="cat_rast"]),
-                                                                       loi_columns = loi_meta$loi_var_nms[loi_meta$loi_type=="cat_rast"],
-                                                                       loi_numeric=F,
-                                                                       loi_numeric_stats = loi_numeric_stats,
-                                                                       roi = catch,
-                                                                       roi_uid=yy,
-                                                                       roi_uid_col = "pour_point_ID",
-                                                                       distance_weights=file.path(temp_dir_sub_sub,paste0(yy,"_inv_distances.zip")),
-                                                                       remove_region = clip_region,
-                                                                       return_products = return_products)
-                    )
-                  }
-
-                  p()
-
-                  if (return_products){
-                    p0<-hw
-                    p1<-unlist(hw_attr_num$return_products,recursive=F)
-                    if (!is.null(p1)) names(p1)<-paste0(names(hw_attr_num$return_products),"_num")
-                    p2<-unlist(hw_attr_cat$return_products,recursive=F)
-                    if (!is.null(p2)) names(p2)<-paste0(names(hw_attr_cat$return_products),"_cat")
-                    p_out<-c(p0,p1,p2)
-                    p_out<-p_out[sort(names(p_out))]
-                  }
-
-                  return(
-                    dplyr::bind_cols(
-                      tibble::tibble(products=list(p_out)[1]),
-                      purrr::reduce(list(hw_attr_num$attribute_table,hw_attr_cat$attribute_table),dplyr::left_join,by="pour_point_ID")
-                    ) %>%
-                      dplyr::select(pour_point_ID,tidyselect::everything())
+                if (any(loi_meta$loi_type=="cat_rast")) {
+                  suppressMessages(
+                    hw_attr_cat<-hydroweight::hydroweight_attributes(loi=terra::rast(loi_file$outfile,lyrs=loi_meta$loi_var_nms[loi_meta$loi_type=="cat_rast"]),
+                                                                     loi_columns = loi_meta$loi_var_nms[loi_meta$loi_type=="cat_rast"],
+                                                                     loi_numeric=F,
+                                                                     loi_numeric_stats = loi_numeric_stats,
+                                                                     roi = catch,
+                                                                     roi_uid=yy,
+                                                                     roi_uid_col = "pour_point_ID",
+                                                                     distance_weights=file.path(temp_dir_sub_sub,paste0(yy,"_inv_distances.zip")),
+                                                                     remove_region = clip_region,
+                                                                     return_products = return_products)
                   )
+                }
 
-                })
-            }
-          )
+                #p()
+
+                p_out <- NULL
+                if (return_products){
+                  p0<-hw
+                  p1<-unlist(hw_attr_num$return_products,recursive=F)
+                  if (!is.null(p1)) names(p1)<-paste0(names(hw_attr_num$return_products),"_num")
+                  p2<-unlist(hw_attr_cat$return_products,recursive=F)
+                  if (!is.null(p2)) names(p2)<-paste0(names(hw_attr_cat$return_products),"_cat")
+                  p_out<-c(p0,p1,p2)
+                  p_out<-p_out[sort(names(p_out))]
+                }
+
+                return(
+                  dplyr::bind_cols(
+                    tibble::tibble(products=list(p_out)[1]),
+                    purrr::reduce(
+                      list(hw_attr_num$attribute_table,
+                           hw_attr_cat$attribute_table),
+                      dplyr::left_join,
+                      by="pour_point_ID")
+                  ) %>%
+                    dplyr::select(pour_point_ID,tidyselect::everything())
+                )
+
+              })
+          }
+          #)
         ))
   })
 

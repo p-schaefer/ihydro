@@ -33,6 +33,8 @@ prep_weights<-function(
   n_cores<-future::nbrOfWorkers()
   if (is.infinite(n_cores)) n_cores<-future::availableCores(logical = F)
   if (n_cores==0) n_cores<-1
+  max_cores_opt<-getOption("parallelly.maxWorkers.localhost")
+  options(parallelly.maxWorkers.localhost = n_cores)
 
   options(scipen = 999)
   options(future.rng.onMisuse="ignore")
@@ -279,7 +281,8 @@ prep_weights<-function(
 
       if (n_cores>1) {
         n_cores_2<-n_cores_2-1
-        oplan <- future::plan(list(future::tweak(future::multisession, workers = 2), future::tweak(future::multisession, workers = n_cores_2)))
+        oplan <- future::plan(list(future::tweak(future::multisession, workers = 2),
+                                   future::tweak(future::multisession, workers = n_cores_2)))
         on.exit(future::plan(oplan), add = TRUE)
       }
 
@@ -291,6 +294,7 @@ prep_weights<-function(
 
 
       future_proc<-future::future({
+        options(parallelly.maxWorkers.localhost = n_cores_2+1)
         hw_o_targ<-furrr::future_pmap(
           #hw_o_targ<-purrr::pmap(
           list(x=splt_lst,
@@ -486,6 +490,8 @@ prep_weights<-function(
   #class(output)<-"ihydro"
 
   if (!inherits(output,"ihydro")) output<-as.ihydro(output$outfile)
+
+  options(parallelly.maxWorkers.localhost=max_cores_opt)
 
   return(output)
 

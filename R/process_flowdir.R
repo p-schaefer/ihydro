@@ -81,8 +81,9 @@ process_flowdir<-function(
   target_crs<-terra::crs(dem)
 
   terra::writeRaster(dem,file.path(temp_dir,"dem_final.tif"),overwrite=T,gdal=gdal_arg)
+  terra::writeRaster(dem,file.path(temp_dir,"dem_raw.tif"),overwrite=T,gdal=gdal_arg)
 
-  if (!is.null(burn_streams)){
+  if (!is.null(burn_streams) & !is.null(burn_depth)){
 
     resol<-terra::res(dem)[1]
 
@@ -181,6 +182,7 @@ process_flowdir<-function(
   #browser()
 
   dist_list_out<-list(
+    "dem_raw.tif",
     "dem_final.tif",
     "dem_d8.tif",
     "dem_accum_d8.tif",
@@ -240,8 +242,9 @@ process_flowdir<-function(
       lapply(stats::setNames(dist_list_out,basename(unlist(dist_list_out))),function(x) terra::wrap(terra::rast(x))),
       output
     )
+  } else {
+    suppressWarnings(file.remove(list.files(temp_dir,full.names = T,recursive=T)))
   }
-  suppressWarnings(file.remove(list.files(temp_dir,full.names = T,recursive=T)))
 
   class(output)<-"ihydro"
   return(output)
