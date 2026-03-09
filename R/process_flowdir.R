@@ -79,6 +79,7 @@ process_flowdir<-function(
   dem<-hydroweight::process_input(dem,input_name="dem",working_dir=temp_dir)
   if (!inherits(dem,"SpatRaster")) stop("dem must be a class 'SpatRaster'")
   target_crs<-terra::crs(dem)
+  names(dem)<-"Elevation"
 
   terra::writeRaster(dem,file.path(temp_dir,"dem_final.tif"),overwrite=T,gdal=gdal_arg)
   terra::writeRaster(dem,file.path(temp_dir,"dem_raw.tif"),overwrite=T,gdal=gdal_arg)

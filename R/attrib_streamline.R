@@ -143,7 +143,7 @@ attrib_streamline<-function(
   whitebox::wbt_farthest_channel_head(
     d8_pntr= "dem_d8.tif",
     streams= "dem_streams_d8.tif",
-    output="USChnLn_Fr"
+    output="USChnLn_Fr.tif"
   )
 
   # Extra Attributes --------------------------------------------------------
