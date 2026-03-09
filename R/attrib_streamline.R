@@ -257,7 +257,9 @@ attrib_streamline<-function(
 
   if (!is.null(points)){
     #browser()
-    points<-hydroweight::process_input(points,target = terra::vect(utils::head(final_points[,1])),input_name="points")
+    points<-hydroweight::process_input(points,
+                                       align_to  = terra::vect(utils::head(final_points[,1])),
+                                       input_name="points")
 
     sf::write_sf(sf::st_as_sf(points) %>%
                    dplyr::select(tidyselect::any_of(site_id_col),tidyselect::everything()),
