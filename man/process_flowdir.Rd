@@ -2,51 +2,112 @@
 % Please edit documentation in R/process_flowdir.R
 \name{process_flowdir}
 \alias{process_flowdir}
-\title{Process flow direction/accumulation and extracts streams from DEM}
+\title{Process flow direction/accumulation and extract streams from DEM}
 \usage{
 process_flowdir(
   dem,
   threshold,
   burn_streams = NULL,
   burn_depth = NULL,
+  burn_slope_dist = NULL,
+  burn_slope_depth = NULL,
   min_length = NULL,
   depression_corr = c(NULL, "fill", "breach"),
   output_filename,
-  return_products = F,
+  return_products = FALSE,
   temp_dir = NULL,
-  compress = F,
-  verbose = F
+  compress = FALSE,
+  verbose = FALSE
 )
 }
 \arguments{
-\item{dem}{character (full file path with extension, e.g., "C:/Users/Administrator/Desktop/dem.tif"), \code{RasterLayer}, \code{SpatRaster}, or \code{PackedSpatRaster} of GeoTiFF type. Digital elevation model raster.}
+\item{dem}{Character path, \code{SpatRaster}, or \code{PackedSpatRaster} for a DEM.}
 
-\item{threshold}{integer. Flow accumulation threshold for stream initiation.}
+\item{threshold}{Integer. Flow accumulation threshold for stream initiation.}
 
-\item{burn_streams}{character. (full file path with extension, e.g., "C:/Users/Administrator/Desktop/input.shp"), sf, SpatVector, PackedSpatVector, RasterLayer, SpatRaster, or PackedSpatRaster. Stream vector to burn into DEM.}
+\item{burn_streams}{Optional stream layer to burn into the DEM.}
 
-\item{burn_depth}{numeric. Depth (in meters) to burn stream into the DEM.}
+\item{burn_depth}{Numeric burn depth in map elevation units (default \code{NULL}).}
 
-\item{min_length}{numeric. Minimum tributary length, shorter 1st order tributaries are removed.}
+\item{burn_slope_dist}{Numeric burn slope width in meters (default \code{NULL}).}
 
-\item{depression_corr}{NULL or character. One of c("fill","breach"), specifying whether depressions should be filled or breached. NULL will perform neither, if DEM is already corrected.}
+\item{burn_slope_depth}{Numeric burn slope depth in map elevation units (default \code{NULL}).}
 
-\item{output_filename}{character. Full file path (with extension, e.g., "C:/Users/Administrator/Desktop/out.zip") to write resulting .zip file.}
+\item{min_length}{Numeric. Minimum tributary length in meters; shorter 1st-order
+tributaries are removed.}
 
-\item{return_products}{logical. If \code{TRUE}, a list containing the file path to write resulting \code{*.zip} file, and resulting GIS products. If \code{FALSE}, file path only.}
+\item{depression_corr}{\code{NULL}, \code{"fill"} \code{\link[whitebox:wbt_fill_depressions]{whitebox::wbt_fill_depressions()}}, or \code{"breach"} \code{\link[whitebox:wbt_breach_depressions]{whitebox::wbt_breach_depressions()}}.}
 
-\item{temp_dir}{character. File path for temporary file storage, If \code{NULL}, \code{tempfile()} will be used}
+\item{output_filename}{Character path ending in \code{.gpkg}.}
 
-\item{compress}{logical. Should output rasters be compressed, slower but more space efficient.}
+\item{return_products}{Logical. Return raster products in addition to the
+file path?}
 
-\item{verbose}{logical.}
+\item{temp_dir}{Character directory for temporary files.}
+
+\item{compress}{Logical. Compress output rasters?}
+
+\item{verbose}{Logical.}
 }
 \value{
-An object of class ihydro. If \code{return_products = TRUE}, all geospatial analysis products are returned as well.
+An object of class \code{ihydro}.
+The contained rasters are:
+\itemize{
+\item \code{dem_raw}: the input DEM.
+\item \code{dem_final}: the final DEM after burning and depression correction.
+\item \code{dem_d8}: D8 flow direction pointer raster.
+\item \code{dem_accum_d8}: D8 flow accumulation in number of upstream cells.
+\item \code{dem_accum_d8_sca}: D8 flow accumulation in upstream contributing area (SCA).
+\item \code{dem_streams_d8}: D8-derived stream raster based on the specified flow accumulation threshold.
+If \code{return_products} is \code{TRUE}, the returned \code{ihydro} object will also include the above rasters as \code{SpatRaster} objects for immediate use in R. Otherwise, only file paths are included and temporary files are cleaned up.
+}
 }
 \description{
-If \code{return_products} = T, Packed-SpatRaster objects are returned. If \code{burn_streams} is specified, \link[whitebox:wbt_fill_burn]{whitebox::wbt_fill_burn} is used to burn the stream layer into the DEM. This is followed by \link[whitebox:wbt_feature_preserving_smoothing]{whitebox::wbt_feature_preserving_smoothing} to smooth final DEM. The \code{depression_corr} argument can be used to apply filling or breaching approaches to enforce flow accumulation from internal pit cells.
+Produces D8 flow direction, flow accumulation, and stream extraction rasters
+from a DEM, storing everything in a GeoPackage.
 }
-\seealso{
-\link[whitebox:wbt_d8_pointer]{whitebox::wbt_d8_pointer}, \link[whitebox:wbt_d8_flow_accumulation]{whitebox::wbt_d8_flow_accumulation}, \link[whitebox:wbt_extract_streams]{whitebox::wbt_extract_streams}
+\details{
+If \code{burn_streams} is specified:
+\itemize{
+\item with \code{burn_slope_depth} and \code{burn_slope_dist}, then a gradual slope of
+\code{burn_slope_depth} (map depth units) over \code{burn_slope_dist} meters is applied
+to directing surface flows to the nearest \code{burn_streams}.
+\item with \code{burn_depth}, then the dem covered by the supplied stream lines is depressed
+into the landscape by \code{burn_depth} meters.
+\item \link[whitebox:wbt_feature_preserving_smoothing]{whitebox::wbt_feature_preserving_smoothing} is applied
+}
+
+\code{depression_corr} can apply
+filling \code{\link[whitebox:wbt_fill_depressions]{whitebox::wbt_fill_depressions()}} or breaching
+\code{\link[whitebox:wbt_breach_depressions]{whitebox::wbt_breach_depressions()}} to enforce flow from internal pit cells.
+}
+\examples{
+\dontrun{
+# Example usage
+tdir <- tempdir()
+
+ex_dem <- ex_data("elev_ned_30m.tif")
+ex_streams <- ex_data("streams.shp")
+output_gpkg <- file.path(tdir, "output.gpkg")
+
+ihydro_obj <- ihydro::process_flowdir(
+   dem = ex_dem,
+   threshold = 1000,
+   burn_streams = ex_streams,
+   burn_depth = 5,
+   burn_slope_dist = 250,
+   burn_slope_depth = 5,
+   min_length = 3,
+   depression_corr = "breach",
+   output_filename = output_gpkg,
+   return_products = TRUE,
+   verbose = TRUE
+)
+
+ihydro::ihydro_layers(ihydro_obj, n = Inf)
+
+flow_accumulation <- ihydro::read_ihydro(ihydro_obj, "dem_accum_d8")
+terra::plot(log10(flow_accumulation), main = "D8 Flow Accumulation")
+}
+
 }

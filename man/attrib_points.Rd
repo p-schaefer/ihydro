@@ -2,7 +2,7 @@
 % Please edit documentation in R/attrib_points.R
 \name{attrib_points}
 \alias{attrib_points}
-\title{Attributes stream segments/sampling points with layers of interest (loi)}
+\title{Attribute stream segments/sampling points with layers of interest}
 \usage{
 attrib_points(
   input,
@@ -12,53 +12,61 @@ attrib_points(
   sample_points = NULL,
   link_id = NULL,
   clip_region = NULL,
-  OS_combine = F,
+  OS_combine = FALSE,
   target_o_type = c("point", "segment_point", "segment_whole"),
   weighting_scheme = c("lumped", "iEucO", "iEucS", "iFLO", "iFLS", "HAiFLO", "HAiFLS"),
   loi_numeric_stats = c("distwtd_mean", "distwtd_sd", "mean", "sd", "median", "min",
     "max", "sum", "cell_count"),
-  inv_function = function(x) {
-     (x * 0.001 + 1)^-1
- },
+  inv_function = function(x) (x * 0.001 + 1)^-1,
   temp_dir = NULL,
-  return_products = T,
-  verbose = F
+  return_products = TRUE,
+  verbose = FALSE
 )
 }
 \arguments{
-\item{input}{an object of class ihydro}
+\item{input}{An \code{ihydro} object.}
 
-\item{out_filename}{filepath of csv to save resulting attributes}
+\item{out_filename}{CSV output path.}
 
-\item{loi_file}{filepath of \code{process_loi()} output}
+\item{loi_file}{Optional path to LOI GeoPackage or \code{ihydro} object.}
 
-\item{loi_cols}{character or NULL. Names of loi layers to include in summary. If NULL, all layers used.}
+\item{loi_cols}{Character vector of LOI column names, or \code{NULL} for all.}
 
-\item{sample_points}{character or NULL. IDs of unique station identifiers provided in 'site_id_col' of \code{generate_vectors()} to calculate attributes for.}
+\item{sample_points}{Character vector of site IDs, or \code{NULL}.}
 
-\item{link_id}{character or NULL. 'link_id's of reaches to calculate attributes for.}
+\item{link_id}{Character vector of link IDs, or \code{NULL}.}
 
-\item{clip_region}{character (full file path with extension, e.g., "C:/Users/Administrator/Desktop/lu.shp"), \code{sf}, \code{SpatVector}, \code{PackedSpatVector}, \code{RasterLayer}, \code{SpatRaster}, or \code{PackedSpatRaster}. Regions to remove when summarizing the attributes (e.g., remove lake from catchment)}
+\item{clip_region}{Optional region to exclude when summarising.}
 
-\item{OS_combine}{logical. Should target_O and target_S be merged as targets for iEucS, iFLS, and/or HAiFLS? Use \code{TRUE} or \code{FALSE}. This allows cells surrounding \code{target_O} to flow directly into \code{target_O} rather than be forced through \code{target_S}.}
+\item{OS_combine}{Logical. Merge target_O and target_S?}
 
-\item{target_o_type}{character. One of: c("point","segment_point","segment_whole"). Target for "iEucO", "iFLO", and "HAiFLO" weighting schemes. "Point" represents the sampling point on the stream, "segment_point" represents the upstream segment of the sampling points, and "segment_whole" will target the entire reach, regardless of where sampling occurred.}
+\item{target_o_type}{Character. Target geometry type.}
 
-\item{weighting_scheme}{character. One or more weighting schemes: c("lumped", "iEucO", "iEucS", "iFLO", "iFLS", "HAiFLO", "HAiFLS")}
+\item{weighting_scheme}{Character vector of weighting schemes.}
 
-\item{loi_numeric_stats}{character. One or more of c("distwtd_mean", "distwtd_sd", "mean", "sd", "median", "min", "max", "sum", "cell_count"). Those without distwtd_ are simple "lumped" statistics.}
+\item{loi_numeric_stats}{Character vector of summary statistics.}
 
-\item{inv_function}{function or named list of functions based on \code{weighting_scheme} names. Inverse function used in \code{terra::app()} to convert distances to inverse distances. Default: \code{(X * 0.001 + 1)^-1} assumes projection is in distance units of m and converts to distance units of km.}
+\item{inv_function}{Inverse distance function.}
 
-\item{temp_dir}{character. File path for intermediate products; these are deleted once the function runs successfully.}
+\item{temp_dir}{Temporary file directory.}
 
-\item{return_products}{logical. If \code{TRUE}, a list containing all geospatial analysis products. If \code{FALSE}, folder path to resulting .zip file.}
+\item{return_products}{Logical. Return products?}
 
-\item{verbose}{logical.}
+\item{verbose}{Logical.}
 }
 \value{
-A tibble of resulting attributes. If \code{return_products = TRUE}, all geospatial analysis products are returned as well.
+A data.frame of resulting attributes, also written to
+\code{out_filename}. Output column names match \code{\link[=fasttrib_points]{fasttrib_points()}}
+conventions: \code{pour_point_id} (lowercase), \code{status},
+\verb{\{loi\}_lumped_\{stat\}}, \verb{\{loi\}_\{scheme\}_mean},
+\verb{\{loi\}_\{scheme\}_sd}, \verb{\{loi\}_\{scheme\}_prop}.
 }
 \description{
-Attributes stream segments/sampling points with layers of interest (loi)
+Uses \code{\link[=hydroweight]{hydroweight()}} and \code{\link[=hydroweight_attributes]{hydroweight_attributes()}}
+to attribute points with inverse-distance weighted landscape statistics.
+Output columns are named to match \code{\link[=fasttrib_points]{fasttrib_points()}} conventions.
+}
+\seealso{
+\code{\link[=fasttrib_points]{fasttrib_points()}}, \code{\link[=hydroweight]{hydroweight()}},
+\code{\link[=hydroweight_attributes]{hydroweight_attributes()}}
 }

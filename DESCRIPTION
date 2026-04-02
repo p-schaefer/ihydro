@@ -1,61 +1,58 @@
 Package: ihydro
 Title: Integrated hydrology tools for aquatic environmental science
-Version: 0.0.1
-Authors@R: c( 
+Version: 0.0.2
+Authors@R: c(
     person(given = "Patrick",
            family = "Schaefer",
            email = c("ecopulseanalytics@gmail.com"),
-           role = c("aut", "cre")) 
+           role = c("aut", "cre"))
     )
 Description: Implements workflows associated with geospatial
     analysis of aquatic systems. Uses user defined Digital Elevation
-    Models (DEM) to produce attributed stream line vectors, catchment and subcatchment 
-    polygones, and pairwise distances among stream segments. Sampling points 
-    may be inserted to stream network. 
-URL: https://github.com/p-schaefer/ihydro 
-BugReports: https://github.com/p-schaefer/ihydro/issues 
+    Models (DEM) to produce attributed stream line vectors, catchment and subcatchment
+    polygons, and pairwise distances among stream segments. Sampling points 
+    may be inserted to stream network.
+URL: https://github.com/p-schaefer/ihydro
+BugReports: https://github.com/p-schaefer/ihydro/issues
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
-Remotes:
-    GLFC-WET/hydroweight@dev
 Imports:
     carrier,
+    cli,
     data.table,
     DBI,
     dbplyr,
     dtplyr,
-    exactextractr,
-    nngeo,
-    parallel,
-    promises,
-    units,
-    rlang,
-    RSQLite,
     dplyr,
     furrr,
     future,
-    hydroweight,
     magrittr,
     memuse,
+    nngeo,
     progressr,
     purrr,
+    rlang,
+    RSQLite,
     sf,
-    sfheaders,
-    stars,
     stringr,
+    terra,
+    tibble,
     tidyr,
     tidyselect,
-    tibble,
-    terra,
     units,
     whitebox,
+    sfheaders,
     mirai
 Depends:
-    R (>= 4.0)
-Suggests: 
-    knitr, 
-    rmarkdown
+    R (>= 4.2.0)
+Suggests:
+    hexbin,
+    knitr,
+    mapview,
+    rmarkdown,
+    testthat (>= 3.0.0)
 VignetteBuilder: knitr
+Config/testthat/edition: 3

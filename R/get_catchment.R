@@ -1,161 +1,210 @@
-
-#' Generate upstream catchment areas for points
+#' Generate upstream catchment areas
 #'
-#' Catchments are automatically added to Catchment_poly layer in the geopackage for easier future retrieval
+#' Retrieves complete upstream catchment polygons for specified reaches or
+#' sampling points. Results are cached in the `Catchment_poly` layer.
 #'
-#' @param input output of `process_hydrology()` or one containing `generate_subbasins()` and `trace_flowpaths()`
-#' @param sample_points character or NULL. IDs of unique station identifiers provided in 'site_id_col' of `generate_vectors()` to calculate catchments for.
-#' @param link_id character or NULL. 'link_id's of reaches to calculate catchments for.
-#' @param temp_dir character. File path for temporary file storage, If \code{NULL}, `tempfile()` will be used
+#' @param input An `ihydro` object.
+#' @param sample_points Character vector of site IDs (must exist in the `site_id_col` column provided in [generate_vectors()]), or `NULL`.
+#' @param link_id Character vector of link IDs, or `NULL`.
+#' @param temp_dir Temporary file directory.
+#' @param verbose Logical.
 #'
-#' @return sf polygon of upstream catchments
+#' @return An `sf` polygon object of upstream catchments.
 #'
 #' @export
+#' @examples
+#' \dontrun{
+#' # Example usage
+#' tdir <- tempdir()
+#'
+#' ex_dem <- ex_data("elev_ned_30m.tif")
+#' ex_streams <- ex_data("streams.shp")
+#' ex_points <- ex_data("sites_nc.shp")
+#' output_gpkg <- file.path(tdir, "output.gpkg")
+#'
+#' ihydro_obj <- ihydro::process_flowdir(
+#'    dem = ex_dem,
+#'    threshold = 1000,
+#'    burn_streams = ex_streams,
+#'    burn_depth = 5,
+#'    burn_slope_dist = 250,
+#'    burn_slope_depth = 5,
+#'    min_length = 3,
+#'    depression_corr = "breach",
+#'    points = ex_points,
+#'    site_id_col = "site_id",
+#'    snap_distance = 150,
+#'    break_on_noSnap = FALSE,
+#'    pwise_dist = TRUE,
+#'    pwise_all_links = TRUE,
+#'    output_filename = output_gpkg,
+#'    return_products = TRUE,
+#'    verbose = TRUE
+#' )
+#'
+#' catch_poly <- ihydro::get_catchment(
+#'   input = ihydro_obj,
+#'   sample_points = c("101.1"),
+#'   link_id = c("800"),
+#' )
+#'
+#' mapview::mapview(catch_poly) +
+#'   mapview::mapview(ihydro::read_ihydro(ihydro_obj, "streams"))
+#'
+#' }
+#'
 
-
-get_catchment<-function(
-    input,
-    sample_points=NULL,
-    link_id=NULL,
-    temp_dir=NULL
+get_catchment <- function(
+  input,
+  sample_points = NULL,
+  link_id = NULL,
+  temp_dir = NULL,
+  verbose = FALSE
 ) {
-  if (!inherits(input,"ihydro")) stop("'input' must be of class('ihydro')")
-  options(scipen = 999)
-  options(dplyr.summarise.inform = FALSE,future.rng.onMisuse="ignore")
-  whitebox::wbt_options(exe_path=whitebox::wbt_exe_path(),verbose=F)
+  check_ihydro(input)
+  whitebox::wbt_options(exe_path = whitebox::wbt_exe_path(), verbose = FALSE)
 
-  n_cores<-future::nbrOfWorkers()
-  if (is.infinite(n_cores)) n_cores<-future::availableCores(logical = F)
-  if (n_cores==0) n_cores<-1
-  max_cores_opt<-getOption("parallelly.maxWorkers.localhost")
+  n_cores <- n_workers()
+  max_cores_opt <- getOption("parallelly.maxWorkers.localhost")
+  on.exit(options(parallelly.maxWorkers.localhost = max_cores_opt), add = TRUE)
   options(parallelly.maxWorkers.localhost = n_cores)
 
-  ihydro_tbl<-ihydro_layers(input)
+  db_fp <- input$outfile
+  temp_dir <- ensure_temp_dir(temp_dir)
 
-  existing_catch<-tibble::tibble(link_id=NA_character_)[F,]
+  ihydro_tbl <- ihydro_layers(input)
 
-  db_loc<-db_fp<-zip_loc<-input$outfile
-
-  con <- DBI::dbConnect(RSQLite::SQLite(), db_fp)
-
-  site_id_col<-dplyr::collect(dplyr::tbl(con,"site_id_col"))$site_id_col
-
-  all_points<-dplyr::collect(dplyr::tbl(con,"stream_links_attr")) %>%
-    dplyr::mutate(dplyr::across(c(link_id,tidyselect::any_of(site_id_col)),as.character)) %>%
-    dplyr::mutate(dplyr::across(tidyselect::any_of(site_id_col),~dplyr::na_if(.,"")))
+  # Check for existing catchments
+  existing_catch <- tibble::tibble(link_id = character(0))
+  site_id_col <- read_site_id_col(db_fp)
 
   if ("Catchment_poly" %in% ihydro_tbl$layer_name) {
-    existing_catch<-dplyr::collect(dplyr::tbl(con,"Catchment_poly") %>% select(link_id))
+    existing_catch <- read_ihydro(input, "Catchment_poly") |>
+      tibble::as_tibble() |>
+      dplyr::select(link_id)
   }
 
-  DBI::dbDisconnect(con)
-
-  if (is.null(temp_dir)) temp_dir<-tempfile()
-  if (!dir.exists(temp_dir)) dir.create(temp_dir)
-  temp_dir<-normalizePath(temp_dir)
-
-  tdir<-file.path(temp_dir,basename(tempfile()))
-  dir.create(tdir)
-
-  target_IDs<-target_id_fun(
-    db_fp=db_fp,
-    sample_points=sample_points,
-    link_id=link_id,
-    segment_whole=F
+  # Resolve targets
+  target_ids <- target_id_fun(
+    db_fp = db_fp,
+    sample_points = sample_points,
+    link_id = link_id,
+    segment_whole = FALSE
   )
 
+  already_done <- dplyr::filter(
+    target_ids,
+    link_id %in% existing_catch$link_id
+  )
+  still_needed <- dplyr::filter(
+    target_ids,
+    !link_id %in% existing_catch$link_id
+  )
 
-  existing_IDs<-target_IDs %>%
-    filter(link_id %in% existing_catch$link_id)
-
-  target_IDs<-target_IDs%>%
-    filter(!link_id %in% existing_catch$link_id)
-
-  if (nrow(target_IDs)==0) {
+  # If all already cached, return from gpkg
+  if (nrow(still_needed) == 0) {
     return(sf::read_sf(
-      db_loc,
-      query=paste0("SELECT `link_id`, `geom` FROM `Catchment_poly` WHERE (`link_id` IN (",paste0("'",existing_IDs$link_id,collapse = "',"),"'))")
+      db_fp,
+      query = build_sql_in("Catchment_poly", "link_id", already_done$link_id)
     ))
   }
 
+  # ── Compute missing catchments in parallel ──────────────────────────────
+  progressr::with_progress(enable = verbose, {
+    p <- progressr::progressor(steps = nrow(still_needed))
 
-  progressr::with_progress(enable=T,{
-    p <- progressr::progressor(steps = nrow(target_IDs))
-
-    out<-target_IDs %>%
-      dplyr::mutate(db_loc=list(db_loc),
-                    p=list(p)) %>%
-      dplyr::mutate(catch=furrr::future_pmap(
-        list(link_id=link_id,db_loc=db_loc,p=p),
-        .options = furrr::furrr_options(globals = F),
-        carrier::crate(
-          function(link_id,db_loc,p) {
-            options(dplyr.summarise.inform = FALSE)
-            options(scipen = 999)
-            `%>%` <- magrittr::`%>%`
-
-            con <- DBI::dbConnect(RSQLite::SQLite(), db_loc)
-
-            out<-dplyr::tbl(con,"us_flowpaths") %>%
-              dplyr::filter(pour_point_id %in% local(link_id)) %>%
-              dplyr::rename(link_id=origin_link_id) %>%
-              dplyr::left_join(dplyr::tbl(con,"Subbasins_poly") %>%
-                                 dplyr::select(link_id,geom),
-                               by="link_id")  %>%
-              dplyr::show_query() %>%
-              utils::capture.output() %>%
-              utils::tail(-1) %>%
-              paste(collapse = "")
-
-            DBI::dbDisconnect(con)
-
-            p()
-            #browser()
-
-            s1<-suppressWarnings(sf::read_sf(db_loc,
-                                         query=out))
-
-            s1 %>%
-              dplyr::select(-link_id,link_id=pour_point_id) %>%
-              sf::st_buffer(units::as_units(0.01,sf::st_crs(s1)$units)) %>%
-              sf::st_union() %>%
-              #sfheaders::sf_remove_holes() %>%
-              nngeo::st_remove_holes() %>%
-              sf::st_cast("POLYGON") %>%
-              .[1]
-
-          }
-        )
-      ))
-
-  })
-
-  out<-out %>%
-    dplyr::select(tidyselect::any_of("link_id"),tidyselect::any_of("catch")) %>%
-    tidyr::unnest(catch) %>%
-    dplyr::rename(geom=catch)
-
-  sf::write_sf(
-    out,
-    db_loc,
-    layer="Catchment_poly",
-    delete_dsn =F,
-    delete_layer=F,
-    append = T
-  )
-
-  if (nrow(existing_IDs)>0) {
-    out<-out %>%
-      dplyr::bind_rows(
-        sf::read_sf(
-          db_loc,
-          query=paste0("SELECT `link_id`, `geom` FROM `Catchment_poly` WHERE (`link_id` IN (",paste0("'",existing_IDs$link_id,collapse = "',"),"'))")
+    out <- still_needed |>
+      dplyr::mutate(
+        db_loc = list(db_fp),
+        p = list(p)
+      ) |>
+      dplyr::mutate(
+        catch = furrr::future_pmap(
+          list(link_id = link_id, db_loc = db_loc, p = p),
+          .options = furrr::furrr_options(globals = FALSE, seed = NULL),
+          compute_single_catchment
         )
       )
+  })
+
+  out <- out |>
+    dplyr::filter(!is.na(link_id)) |>
+    dplyr::select(catch) |>
+    tidyr::unnest(catch) |>
+    dplyr::filter(!is.na(link_id))
+
+  # Cache results
+  sf::write_sf(
+    out,
+    db_fp,
+    layer = "Catchment_poly",
+    delete_dsn = FALSE,
+    delete_layer = FALSE,
+    append = TRUE
+  )
+
+  # Combine with previously cached
+
+  if (nrow(already_done) > 0) {
+    out <- dplyr::bind_rows(
+      out,
+      sf::read_sf(
+        db_fp,
+        query = build_sql_in(
+          "Catchment_poly",
+          "link_id",
+          already_done$link_id
+        )
+      )
+    )
   }
 
-  options(parallelly.maxWorkers.localhost=max_cores_opt)
-
-  return(sf::st_as_sf(out))
-
+  sf::st_as_sf(out)
 }
+
+
+# ── Worker for single-catchment computation ───────────────────────────────────
+
+#' @noRd
+compute_single_catchment <- carrier::crate(
+  function(link_id, db_loc, p) {
+    #suppressPackageStartupMessages(library(sf))
+    #options(dplyr.summarise.inform = FALSE, scipen = 999)
+    `%>%` <- magrittr::`%>%`
+
+    con <- DBI::dbConnect(RSQLite::SQLite(), db_loc)
+
+    query <- dplyr::tbl(con, "us_flowpaths") %>%
+      dplyr::filter(pour_point_id %in% local(link_id)) %>%
+      dplyr::rename(link_id = origin_link_id) %>%
+      dplyr::left_join(
+        dplyr::tbl(con, "Subbasins_poly") %>% dplyr::select(link_id, geom),
+        by = "link_id"
+      ) %>%
+      dplyr::show_query() %>%
+      utils::capture.output() %>%
+      utils::tail(-1) %>%
+      paste(collapse = "")
+
+    DBI::dbDisconnect(con)
+
+    s1 <- suppressWarnings(sf::read_sf(db_loc, query = query))
+
+    out_geom <- s1 %>%
+      dplyr::select(-link_id, link_id = pour_point_id) %>%
+      sf::st_buffer(units::as_units(0.01, sf::st_crs(s1)$units)) %>%
+      sf::st_union() %>%
+      sfheaders::sf_remove_holes() %>%
+      sf::st_cast("POLYGON")
+
+    out_sf <- sf::st_sf(
+      link_id = link_id,
+      geom = out_geom,
+      crs = sf::st_crs(s1)
+    )
+
+    p()
+
+    return(out_sf[1, , drop = FALSE])
+  }
+)

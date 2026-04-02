@@ -2,7 +2,7 @@
 % Please edit documentation in R/fasttrib_points.R
 \name{fasttrib_points}
 \alias{fasttrib_points}
-\title{Quickly attribute stream segments/sampling points with layers of interest (loi)}
+\title{Attribute sampling points with distance-weighted landscape summaries}
 \usage{
 fasttrib_points(
   input,
@@ -10,57 +10,200 @@ fasttrib_points(
   loi_file = NULL,
   loi_cols = NULL,
   iDW_file = NULL,
-  store_iDW = F,
+  store_iDW = FALSE,
   sample_points = NULL,
   link_id = NULL,
   target_o_type = c("point", "segment_point", "segment_whole"),
   weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"),
   loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
-  inv_function = function(x) {
-     (x * 0.001 + 1)^-1
- },
+  inv_function = function(x) (x * 0.001 + 1)^-1,
+  write_strategy = c("sequential", "batched"),
   temp_dir = NULL,
-  verbose = F,
-  backend = c("tibble", "SQLite", "data.table"),
-  SQLdb_path = ":memory:"
+  verbose = FALSE
 )
 }
 \arguments{
-\item{input}{output from \code{process_hydrology()} (if \code{process_loi()} was not run on \code{process_hydrology()}, \code{loi_file} must be specified)}
+\item{input}{An \code{ihydro} object (from \code{\link[=process_hydrology]{process_hydrology()}}).}
 
-\item{out_filename}{Output file name, ending in '.csv'.}
+\item{out_filename}{Character. CSV output path.}
 
-\item{loi_file}{filepath of \code{process_loi()} output (optional, will search for loi layers in 'input' if not specified).}
+\item{loi_file}{Optional \code{ihydro} object or \code{.gpkg} path with LOI layers.
+Defaults to the layers inside \code{input}.}
 
-\item{loi_cols}{character or NULL. Names of loi layers to include in summary. If NULL, all layers used.}
+\item{loi_cols}{Character vector of LOI column names, or \code{NULL} for all.}
 
-\item{iDW_file}{filepath of \code{prep_weights()} output (optional, will search for weight layers in 'input' if not specified).}
+\item{iDW_file}{Optional \code{ihydro} object or \code{.gpkg} path for pre-computed
+inverse-distance weights. If \code{NULL}, weights are computed on the fly.}
 
-\item{store_iDW}{logical, if 'iDW_file' is NULL, weights will be added to 'input'}
+\item{store_iDW}{Logical. If \code{TRUE} and \code{iDW_file} is \code{NULL}, weights are
+written into the \code{input} GeoPackage.}
 
-\item{sample_points}{character or NULL. IDs of unique station identifiers provided in 'site_id_col' of \code{generate_vectors()} to calculate attributes for.}
+\item{sample_points}{Character vector of site IDs, or \code{NULL} for all.}
 
-\item{link_id}{character or NULL. 'link_id's of reaches to calculate attributes for.}
+\item{link_id}{Character vector of link IDs, or \code{NULL}.}
 
-\item{target_o_type}{character. One of: c("point","segment_point","segment_whole"). Target for"iFLO", and "HAiFLO" weighting schemes. "Point" represents the sampling point on the stream, "segment_point" represents the upstream segment of the sampling points, and "segment_whole" will target the entire reach, regardless of where sampling occurred.}
+\item{target_o_type}{One of \code{"point"}, \code{"segment_point"}, \code{"segment_whole"}.}
 
-\item{weighting_scheme}{character. One or more weighting schemes: c("lumped","iFLO", "iFLS", "HAiFLO", "HAiFLS")}
+\item{weighting_scheme}{Character vector. Any of \code{"lumped"}, \code{"iFLS"},
+\code{"HAiFLS"}, \code{"iFLO"}, \code{"HAiFLO"}.}
 
-\item{loi_numeric_stats}{character. One or more of c("mean", "sd", "median", "min", "max", "sum"). Only distance-weighted versions of mean and SD are returned for all weighting schemes except lumped.}
+\item{loi_numeric_stats}{Character vector. Any of \code{"mean"}, \code{"sd"},
+\code{"median"}, \code{"min"}, \code{"max"}, \code{"sum"}.}
 
-\item{inv_function}{function or named list of functions based on \code{weighting_scheme} names. Inverse function used in \code{terra::app()} to convert distances to inverse distances. Default: \code{(X * 0.001 + 1)^-1} assumes projection is in distance units of m and converts to distance units of km.}
+\item{inv_function}{Inverse-distance function (see \code{\link[=prep_weights]{prep_weights()}}).}
 
-\item{temp_dir}{character. File path for intermediate products; these are deleted once the function runs successfully.}
+\item{write_strategy}{Character. How processed weight rasters are written to the
+GeoPackage. \code{"sequential"} (default) waits for all parallel workers to
+finish, then writes every raster in one pass. \code{"batched"} processes unnest
+groups in chunks, writing to the GeoPackage between chunks to reduce peak
+temporary disk usage.}
 
-\item{verbose}{logical.}
+\item{temp_dir}{Temporary directory for intermediate files.}
 
-\item{backend}{character. One of "tibble", "data.table" or "SQLite"}
-
-\item{SQLdb_path}{character. If backend = "SQLite" directory to store temporary SQL tables, or ":memory:" for an in-memory SQL table}
+\item{verbose}{Logical.}
 }
 \value{
-A data.frame of weighted attributes for the requested areas
+A data.frame of weighted attributes, also written to \code{out_filename}.
 }
 \description{
-Quickly attribute stream segments/sampling points with layers of interest (loi)
+Extracts weighted summaries of layers of interest (LOI) from upstream
+catchments and returns a table of attributes per sampling point.
+Supports numeric and categorical rasters, multiple inverse-distance
+weighting schemes, and automatic retry on memory errors.
+}
+\details{
+The function performs the following steps:
+\enumerate{
+\item Normalizes all file inputs to \code{ihydro} objects for consistent handling.
+\item Validates the presence of LOI data and resolves target sampling points or link IDs.
+\item Validates the presence of or prepares inverse distance weights if specified in the weighting scheme.
+\item Retrieves upstream catchments for the target points.
+\item Extracts raster attributes for each catchment polygon, applying the specified weighting schemes.
+\item Joins the extracted attributes with the target IDs and writes the final output to a CSV file.
+\item If any extractions fail during parallel processing (e.g., due to memory issues), it retries those
+sequentially to ensure maximum completion.
+}
+}
+\examples{
+\dontrun{
+# Example usage
+
+future::plan(future::multisession(workers = 3))
+
+tdir <- tempdir()
+
+ex_dem <- ex_data("elev_ned_30m.tif")
+ex_streams <- ex_data("streams.shp")
+ex_points <- ex_data("sites_nc.shp")
+output_gpkg <- file.path(tdir, "output.gpkg")
+
+# Process Hydrology
+ihydro_obj <- ihydro::process_hydrology(
+   dem = ex_dem,
+   threshold = 1000,
+   burn_streams = ex_streams,
+   burn_depth = 5,
+   burn_slope_dist = 250,
+   burn_slope_depth = 5,
+   min_length = 3,
+   depression_corr = "breach",
+   points = ex_points,
+   site_id_col = "site_id",
+   snap_distance = 150,
+   break_on_noSnap = FALSE,
+   pwise_dist = TRUE,
+   pwise_all_links = TRUE,
+   output_filename = output_gpkg,
+   return_products = TRUE,
+   verbose = TRUE
+)
+
+# Process LOI
+ex_loc <- tempdir()
+
+ex_dem <- ex_data("elev_ned_30m.tif")
+ex_data("landuse_r.tif") \%>\%
+ setNames("LC") \%>\%
+ terra::writeRaster(file.path(ex_loc, "LC.tif"), overwrite = T)
+
+terra::writeVector(
+ ex_data("geology.shp"),
+ file.path(ex_loc, "geology.shp"),
+ overwrite = T
+)
+terra::writeVector(
+ ex_data("pointsources.shp"),
+ file.path(ex_loc, "pointsources.shp"),
+ overwrite = T
+)
+
+landuse_r_path <- file.path(ex_loc, "LC.tif")
+geology_path <- file.path(ex_loc, "geology.shp")
+pointsources_path <- file.path(ex_loc, "pointsources.shp")
+
+sf::read_sf(pointsources_path) \%>\%
+ mutate(pointsource = "pontsrc") \%>\%
+ st_buffer(60) \%>\%
+ sf::write_sf(file.path(ex_loc, "pointsources.shp"), overwrite = T)
+
+pointsources_path <- file.path(ex_loc, "pointsources.shp")
+
+whitebox::wbt_slope(
+ dem = file.path(ex_loc, "toy_dem.tif"),
+ output = file.path(ex_loc, "slope.tif")
+)
+
+output_filename_loi <- file.path(ex_loc, "Processed_loi.gpkg")
+
+loi_combined <- ihydro::process_loi(
+ dem = toy_dem,
+ num_inputs = list(
+   # Can be given as a mixture of input types (file paths, or any sf or terra format)
+   slope = file.path(ex_loc, "slope.tif")
+ ),
+ cat_inputs = list(
+   # Can be given as a mixture of input types (file paths, or any sf or terra format)
+   landcover = landuse_r_path,
+   geology = geology_path,
+   pointsources = pointsources_path
+ ),
+ variable_names = list(
+   # any unlisted inputs will be used in their entirety
+   geology = "GEO_NAME", # names listed here will subset those attributes or layers from the inputs
+   pointsources = "pontsrc"
+ ),
+ output_filename = output_filename_loi,
+ return_products = T,
+ temp_dir = NULL,
+ verbose = T
+)
+
+# Attribute sample points
+output_csv <- file.path(ex_loc, "sample_points_attributes.csv")
+ihydro::fasttrib_points(
+ input = output_gpkg,
+ out_filename = output_csv,
+ loi_file = output_filename_loi,
+ loi_cols = NULL,
+ iDW_file = NULL,
+ store_iDW = FALSE,
+ sample_points = c("1", "25", "80"),
+ link_id = c("100", "200", "800"),
+ target_o_type = "segment_point",
+ weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"),
+ loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
+ inv_function = function(x) (x * 0.001 + 1)^-1,
+ temp_dir = NULL,
+ verbose = TRUE,
+ backend = c("tibble", "SQLite", "data.table"),
+ SQLdb_path = ":memory:"
+)
+
+
+}
+
+}
+\seealso{
+\code{\link[=process_hydrology]{process_hydrology()}}, \code{\link[=process_loi]{process_loi()}}, \code{\link[=prep_weights]{prep_weights()}},
+\code{\link[=attrib_points]{attrib_points()}}
 }

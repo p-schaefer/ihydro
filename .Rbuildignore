@@ -3,3 +3,6 @@
 ^LICENSE\.md$
 ^README\.Rmd$
 ^settings\.json$
+^[.]?air[.]toml$
+^\.vscode$
+^data-raw$

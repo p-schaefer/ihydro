@@ -4,18 +4,105 @@
 \alias{generate_pdist}
 \title{Generate pairwise distances}
 \usage{
-generate_pdist(input, verbose = F, pwise_all_links = F)
+generate_pdist(
+  input,
+  verbose = FALSE,
+  return_products = FALSE,
+  pwise_all_links = FALSE
+)
 }
 \arguments{
-\item{input}{resulting object from \code{trace_flowpaths()}}
+\item{input}{An \code{ihydro} object from \code{\link[=trace_flowpaths]{trace_flowpaths()}}.}
 
-\item{verbose}{logical.}
+\item{verbose}{Logical.}
 
-\item{pwise_all_links}{logical. Should all pairwise distances be calculate, or only those originating from sampling points}
+\item{pwise_all_links}{Logical. Calculate all flow un-connected pairwise distances?}
 }
 \value{
-input with table 'fcon_pwise_dist' and 'funcon_pwise_dist' added to the database
+The input \code{ihydro} object with distance tables added.
+The contained tables in the output GeoPackage are:
+\itemize{
+\item \code{funcon_pwise_dist}: Pairwise flow-unconnected distances between links (if \code{pwise_dist = TRUE}).
+\item \code{fcon_pwise_dist}: Pairwise flow-connected distances between links (if \code{pwise_dist = TRUE}).
+The function returns an \code{ihydro} object containing references to the flowpath tables, which can be accessed using \code{\link[=read_ihydro]{read_ihydro()}} or listed with \code{\link[=ihydro_layers]{ihydro_layers()}}.
+}
 }
 \description{
-Generate pairwise distances
+Computes flow-connected and flow-unconnected pairwise distances between
+stream links, including proportion of shared catchment area.
+}
+\details{
+This function computes pairwise distances between stream links based on the flow paths traced by \code{\link[=trace_flowpaths]{trace_flowpaths()}}. It generates two tables in the GeoPackage database: \code{fcon_pwise_dist} for flow-connected pairs of links, and \code{funcon_pwise_dist} for flow-unconnected pairs. For flow-connected pairs, it calculates the directed path length along the stream network, as well as the proportion of shared catchment area between the origin and destination links. For flow-unconnected pairs, it calculates the undirected path length as the sum of the directed path lengths from each link to their nearest common downstream link. The function is designed to be efficient and can handle large networks, but the runtime may increase with the size and complexity of the stream network. It is recommended to run this function on a machine with sufficient resources and to use the \code{verbose} option to monitor progress.
+}
+\examples{
+\dontrun{
+# Example usage
+tdir <- tempdir()
+
+ex_dem <- ex_data("elev_ned_30m.tif")
+ex_streams <- ex_data("streams.shp")
+ex_points <- ex_data("sites_nc.shp")
+output_gpkg <- file.path(tdir, "output.gpkg")
+
+ihydro_obj <- ihydro::process_flowdir(
+   dem = ex_dem,
+   threshold = 1000,
+   burn_streams = ex_streams,
+   burn_depth = 5,
+   burn_slope_dist = 250,
+   burn_slope_depth = 5,
+   min_length = 3,
+   depression_corr = "breach",
+   output_filename = output_gpkg,
+   return_products = TRUE,
+   verbose = TRUE
+)
+
+ihydro::generate_vectors(
+   input = ihydro_obj,
+   points = ex_points,
+   site_id_col = "site_id",
+   snap_distance = 150,
+   break_on_noSnap = FALSE,
+   return_products = TRUE,
+   verbose = TRUE
+)
+
+ihydro::trace_flowpaths(
+  input = ihydro_obj,
+  pwise_dist = TRUE,
+  pwise_all_links = FALSE,
+  return_products = TRUE,
+  verbose = TRUE
+)
+
+ihydro::generate_pdist(
+  input = ihydro_obj,
+  pwise_all_links = TRUE,
+  return_products = TRUE,
+  verbose = TRUE
+)
+
+ihydro::ihydro_layers(ihydro_obj, n = Inf)
+
+pwise_dist <- dplyr::bind_rows(
+  ihydro::read_ihydro(hydro_out,"fcon_pwise_dist") |>
+    dplyr::mutate(dist_type = "Flow Connected"),
+  ihydro::read_ihydro(hydro_out,"funcon_pwise_dist") |>
+    dplyr::mutate(dist_type = "Flow Unconnected")
+)
+
+lines_out <- ihydro::read_ihydro(hydro_out,"stream_lines") |>
+  dplyr::mutate(link_id = as.character(link_id)) |>
+  dplyr::left_join(
+    pwise_dist |>
+      dplyr::filter(dist_type == "Flow Connected") |>
+      dplyr::filter(origin == "200"),
+    by = c("link_id" = "destination")
+)
+
+mapview::mapview(lines_out, zcol = "directed_path_length", layer.name = "Flow-connected distance to link 200")
+
+}
+
 }

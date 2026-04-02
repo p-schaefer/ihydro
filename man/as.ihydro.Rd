@@ -2,16 +2,45 @@
 % Please edit documentation in R/utils.R
 \name{as.ihydro}
 \alias{as.ihydro}
-\title{ihydro Class}
+\alias{as_ihydro}
+\title{Create an ihydro object from a GeoPackage file}
 \usage{
 as.ihydro(file)
+
+as_ihydro(file)
 }
 \arguments{
-\item{file}{filepath to a geopackage file (.gpkg)}
+\item{file}{Character. File path to a GeoPackage file (\code{.gpkg}). The file
+must already exist on disk.}
 }
 \value{
-an object of class ihydro
+An object of class \code{ihydro}, which is a list with element \code{outfile}
+containing the normalised path to the GeoPackage.
 }
 \description{
-Creates an object of class "ihydro".
+Loads an existing ihydro GeoPackage (\code{.gpkg}) file and wraps it in an
+\code{ihydro} S3 object. The resulting object stores the file path and can be
+passed to any other function in the package (e.g., \code{\link[=generate_vectors]{generate_vectors()}},
+\code{\link[=trace_flowpaths]{trace_flowpaths()}}, \code{\link[=process_loi]{process_loi()}}).
+}
+\details{
+\code{as_ihydro()} is provided as a snake_case alias for convenience.
+}
+\examples{
+\dontrun{
+# Open an existing ihydro GeoPackage
+my_hydro <- as.ihydro("path/to/hydrology.gpkg")
+
+# Inspect the layers stored inside
+ihydro_layers(my_hydro)
+
+# The snake_case alias works identically
+my_hydro <- as_ihydro("path/to/hydrology.gpkg")
+}
+
+}
+\seealso{
+\code{\link[=ihydro_layers]{ihydro_layers()}} to inspect the contents of an \code{ihydro} object,
+\code{\link[=process_flowdir]{process_flowdir()}} or \code{\link[=process_hydrology]{process_hydrology()}} to create a new GeoPackage
+from a DEM.
 }

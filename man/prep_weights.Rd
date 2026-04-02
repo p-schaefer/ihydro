@@ -2,7 +2,7 @@
 % Please edit documentation in R/prep_weights.R
 \name{prep_weights}
 \alias{prep_weights}
-\title{Prepares hydroweights and adds them to existing zip file}
+\title{Prepare inverse distance weights}
 \usage{
 prep_weights(
   input,
@@ -11,33 +11,126 @@ prep_weights(
   link_id = NULL,
   target_o_type = c("point", "segment_point", "segment_whole"),
   weighting_scheme = c("iFLS", "HAiFLS", "iFLO", "HAiFLO"),
-  inv_function = function(x) {
-     (x * 0.001 + 1)^-1
- },
+  inv_function = function(x) (x * 0.001 + 1)^-1,
+  write_strategy = c("sequential", "batched"),
   temp_dir = NULL,
-  verbose = F
+  verbose = FALSE
 )
 }
 \arguments{
-\item{input}{an object of class ihydro.}
+\item{input}{An \code{ihydro} object.}
 
-\item{sample_points}{character or NULL. IDs of unique station identifiers priveded in 'site_id_col' of \code{generate_vectors()}}
+\item{output_filename}{Optional path for weight GeoPackage.}
 
-\item{link_id}{character or NULL. 'link_id's of reaches to calculate attributes for.}
+\item{sample_points}{Character vector of site IDs (must exist in the \code{site_id_col} column provided in \code{\link[=generate_vectors]{generate_vectors()}}), or \code{NULL}.}
 
-\item{target_o_type}{character. One of: c("point","segment_point","segment_whole"). Target for iEucO" "iFLO", and "HAiFLO" weighting schemes. "Point" represents the sampling point on the stream, "segment_point" represents the upstream segment of the sampling points, and "segment_whole" will target the entire reach, regardless of where sampling occurred.}
+\item{link_id}{Character vector of link IDs, or \code{NULL}.}
 
-\item{weighting_scheme}{character. One or more weighting schemes: c( "iFLO", "iFLS", "HAiFLO", "HAiFLS")}
+\item{target_o_type}{Character. Geometry type for point-targeted weights (see details).}
 
-\item{inv_function}{function or named list of functions based on \code{weighting_scheme} names. Inverse function used in \code{terra::app()} to convert distances to inverse distances. Default: \code{(X * 0.001 + 1)^-1} assumes projection is in distance units of m and converts to distance units of km.}
+\item{weighting_scheme}{Character vector of weighting schemes.}
 
-\item{temp_dir}{character. File path for intermediate products; these are deleted once the function runs successfully.}
+\item{inv_function}{Inverse distance function.}
 
-\item{verbose}{logical.}
+\item{write_strategy}{Character. How processed weight rasters are written to the
+GeoPackage. \code{"sequential"} (default) waits for all parallel workers to
+finish, then writes every raster in one pass. \code{"batched"} processes unnest
+groups in chunks, writing to the GeoPackage between chunks to reduce peak
+temporary disk usage.}
+
+\item{temp_dir}{Temporary file directory.}
+
+\item{verbose}{Logical.}
 }
 \value{
-input
+An \code{ihydro} object pointing to the weight file.
 }
 \description{
-Prepares hydroweights and adds them to existing zip file
+Computes stream-targeted (iFLS, HAiFLS) and point-targeted (iFLO, HAiFLO)
+inverse distance weights and stores them in a GeoPackage.
+Stream-targeted weights are calculated for all stream links, while point-targeted
+weights are calculated for a subset of target points (e.g., sample points) to save time and storage.
+The function checks for existing weights in the output GeoPackage and only calculates missing ones.
+It uses parallel processing to speed up the computation of point-targeted weights, which can be time-consuming.
+}
+\details{
+The \code{target_o_type} argument controls the geometry type of the point-targeted weights, which can be
+"point" (pour points), "segment_whole" (whole
+stream reaches [ignoring artificial reach beaks introduced with the \code{points} argument in \code{\link[=generate_vectors]{generate_vectors()}}]),
+or "segment_point" (segments calculated separately for artificial reach beaks introduced
+with the \code{points} argument in \code{\link[=generate_vectors]{generate_vectors()}}).
+
+Point-targeted (iFLO, HAiFLO) inverse distance weights are calculated and stored in unnested format,
+meaning that weights for different target points may be stored in the same raster layer, if they do
+not overlap. This allows for more efficient storage and retrieval of weights for specific target points
+without having to load many layers.
+
+When run in parallel, the function processes each LOI independently across multiple cores.
+The \code{write_strategy} argument controls how processed rasters are persisted to the GeoPackage:
+\itemize{
+\item \code{"sequential"} (default): all layers are processed in parallel first, then written to the
+GeoPackage in a single sequential pass. This approach is faster but uses more disk space temporarily.
+(note: this may trigger nested-future connection warnings in some environments, but these can be safely ignored).
+\item \code{"batched"}: layers are processed in chunks (one chunk per batch of \code{n_cores} layers).
+After each chunk finishes, its rasters are written to the GeoPackage before the next
+chunk begins. This reduces peak temporary disk usage at the cost of slightly more
+scheduling overhead.
+}
+}
+\examples{
+\dontrun{
+# Example usage
+
+future::plan(future::multisession(workers = 3))
+
+tdir <- tempdir()
+
+ex_dem <- ex_data("elev_ned_30m.tif")
+ex_streams <- ex_data("streams.shp")
+ex_points <- ex_data("sites_nc.shp")
+output_gpkg <- file.path(tdir, "output.gpkg")
+
+# Process Hydrology
+ihydro_obj <- ihydro::process_hydrology(
+   dem = ex_dem,
+   threshold = 1000,
+   burn_streams = ex_streams,
+   burn_depth = 5,
+   burn_slope_dist = 250,
+   burn_slope_depth = 5,
+   min_length = 3,
+   depression_corr = "breach",
+   points = ex_points,
+   site_id_col = "site_id",
+   snap_distance = 150,
+   break_on_noSnap = FALSE,
+   pwise_dist = TRUE,
+   pwise_all_links = TRUE,
+   output_filename = output_gpkg,
+   return_products = TRUE,
+   verbose = TRUE
+)
+
+# Prep Weights
+weight_file <- file.path(tdir, "weights.gpkg")
+ihydro_weights <- ihydro::prep_weights(
+   input = ihydro_obj,
+   output_filename = weight_file,
+   sample_points = c("1", "25", "80"),
+   link_id = c("100", "200", "800"),
+   target_o_type = "segment_point",
+   weighting_scheme = c("iFLS", "HAiFLS", "iFLO", "HAiFLO"),
+   inv_function = function(x) (x * 0.001 + 1)^-1,
+   verbose = TRUE
+)
+
+lookup_tbl <- ihydro::read_ihydro(ihydro_weights,"target_o_meta")
+weight_id <- dplyr::filter(lookup_tbl, link_id == "800")$unn_group
+
+weight_rast <- ihydro::read_ihydro(ihydro_weights, paste0("iFLO_unn_group", weight_id))
+
+terra::plot(weight_rast)
+
+}
+
 }

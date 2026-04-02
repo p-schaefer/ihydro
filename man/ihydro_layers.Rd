@@ -2,16 +2,58 @@
 % Please edit documentation in R/utils.R
 \name{ihydro_layers}
 \alias{ihydro_layers}
-\title{Describe layers objects of class ihydro}
+\title{List layers stored in an ihydro GeoPackage}
 \usage{
 ihydro_layers(input)
 }
 \arguments{
-\item{input}{an object of class ihydro}
+\item{input}{An object of class \code{ihydro}, as returned by \code{\link[=as.ihydro]{as.ihydro()}},
+\code{\link[=process_flowdir]{process_flowdir()}}, or any other ihydro function.}
 }
 \value{
-table of objects in the ihydro geopackage
+A \link[tibble:tibble]{tibble} with columns:
+\describe{
+\item{\code{layer_name}}{Name of the layer in the GeoPackage.}
+\item{\code{data_type}}{One of \code{"Raster"}, \code{"Vector"}, or \code{"Table"}.}
+\item{\code{data_group}}{Logical grouping label (see \strong{Details}).}
+}
 }
 \description{
-Describe layers objects of class ihydro
+Queries the GeoPackage database to enumerate every raster, vector, and
+plain-table layer it contains, along with a logical grouping label
+(\code{data_group}). This is useful for inspecting what has been computed so
+far and for verifying that all required layers are present before running
+downstream functions.
+}
+\details{
+Layers are classified into the following groups:
+\describe{
+\item{\code{hydro}}{DEM-derived rasters and stream network vectors
+(e.g., \code{dem_final}, \code{stream_links}, \code{Subbasins_poly}).}
+\item{\code{flow_path}}{Upstream / downstream lookup tables (\code{us_flowpaths},
+\code{ds_flowpaths}).}
+\item{\code{pwise_dist}}{Pairwise distance matrices (\code{fcon_pwise_dist},
+\code{funcon_pwise_dist}).}
+\item{\code{sample_points}}{Original and snapped sampling-point layers.}
+\item{\code{loi}}{Layers of interest (landscape rasters processed by
+\code{\link[=process_loi]{process_loi()}}).}
+\item{\code{iDW}}{Inverse distance weight rasters (\code{iFLS}, \code{HAiFLO}, etc.).}
+\item{\code{meta}}{Metadata tables (\code{site_id_col}, \code{loi_meta}, etc.).}
+}
+}
+\examples{
+\dontrun{
+hydro <- as.ihydro("my_watershed.gpkg")
+
+# List everything
+ihydro_layers(hydro)
+
+# Filter to just the hydrology layers
+ihydro_layers(hydro) |>
+  dplyr::filter(data_group == "hydro")
+}
+
+}
+\seealso{
+\code{\link[=as.ihydro]{as.ihydro()}} to create an \code{ihydro} object.
 }

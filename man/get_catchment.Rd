@@ -2,22 +2,73 @@
 % Please edit documentation in R/get_catchment.R
 \name{get_catchment}
 \alias{get_catchment}
-\title{Generate upstream catchment areas for points}
+\title{Generate upstream catchment areas}
 \usage{
-get_catchment(input, sample_points = NULL, link_id = NULL, temp_dir = NULL)
+get_catchment(
+  input,
+  sample_points = NULL,
+  link_id = NULL,
+  temp_dir = NULL,
+  verbose = FALSE
+)
 }
 \arguments{
-\item{input}{output of \code{process_hydrology()} or one containing \code{generate_subbasins()} and \code{trace_flowpaths()}}
+\item{input}{An \code{ihydro} object.}
 
-\item{sample_points}{character or NULL. IDs of unique station identifiers provided in 'site_id_col' of \code{generate_vectors()} to calculate catchments for.}
+\item{sample_points}{Character vector of site IDs (must exist in the \code{site_id_col} column provided in \code{\link[=generate_vectors]{generate_vectors()}}), or \code{NULL}.}
 
-\item{link_id}{character or NULL. 'link_id's of reaches to calculate catchments for.}
+\item{link_id}{Character vector of link IDs, or \code{NULL}.}
 
-\item{temp_dir}{character. File path for temporary file storage, If \code{NULL}, \code{tempfile()} will be used}
+\item{temp_dir}{Temporary file directory.}
+
+\item{verbose}{Logical.}
 }
 \value{
-sf polygon of upstream catchments
+An \code{sf} polygon object of upstream catchments.
 }
 \description{
-Catchments are automatically added to Catchment_poly layer in the geopackage for easier future retrieval
+Retrieves complete upstream catchment polygons for specified reaches or
+sampling points. Results are cached in the \code{Catchment_poly} layer.
+}
+\examples{
+\dontrun{
+# Example usage
+tdir <- tempdir()
+
+ex_dem <- ex_data("elev_ned_30m.tif")
+ex_streams <- ex_data("streams.shp")
+ex_points <- ex_data("sites_nc.shp")
+output_gpkg <- file.path(tdir, "output.gpkg")
+
+ihydro_obj <- ihydro::process_flowdir(
+   dem = ex_dem,
+   threshold = 1000,
+   burn_streams = ex_streams,
+   burn_depth = 5,
+   burn_slope_dist = 250,
+   burn_slope_depth = 5,
+   min_length = 3,
+   depression_corr = "breach",
+   points = ex_points,
+   site_id_col = "site_id",
+   snap_distance = 150,
+   break_on_noSnap = FALSE,
+   pwise_dist = TRUE,
+   pwise_all_links = TRUE,
+   output_filename = output_gpkg,
+   return_products = TRUE,
+   verbose = TRUE
+)
+
+catch_poly <- ihydro::get_catchment(
+  input = ihydro_obj,
+  sample_points = c("101.1"),
+  link_id = c("800"),
+)
+
+mapview::mapview(catch_poly) +
+  mapview::mapview(ihydro::read_ihydro(ihydro_obj, "streams"))
+
+}
+
 }

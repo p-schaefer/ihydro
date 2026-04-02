@@ -2,7 +2,7 @@
 % Please edit documentation in R/process_loi.R
 \name{process_loi}
 \alias{process_loi}
-\title{Processes layers of interest (loi) for attribution of stream network}
+\title{Process layers of interest (LOI) for stream network attribution}
 \usage{
 process_loi(
   input = NULL,
@@ -12,36 +12,141 @@ process_loi(
   cat_inputs = list(),
   output_filename = NULL,
   variable_names = NULL,
-  return_products = F,
+  return_products = FALSE,
+  write_strategy = c("sequential", "batched"),
   temp_dir = NULL,
-  verbose = F,
-  overwrite = T
+  verbose = FALSE,
+  overwrite = TRUE
 )
 }
 \arguments{
-\item{input}{\code{NULL} or output from \code{process_hydrology()} or \code{process_flowdir()}. If \code{NULL}, \code{dem} must be specified.}
+\item{input}{\code{NULL} or an \code{ihydro} object. If \code{NULL}, \code{dem} is required.}
 
-\item{dem}{\code{NULL} or character (full file path with extension, e.g., "C:/Users/Administrator/Desktop/dem.tif"), \code{RasterLayer}, \code{SpatRaster}, or \code{PackedSpatRaster} of GeoTiFF type. Digital elevation model raster. If \code{NULL}, input must be specified.}
+\item{dem}{\code{NULL} or a DEM (path, \code{SpatRaster}, etc.).}
 
-\item{clip_region}{character (full file path with extension, e.g., "C:/Users/Administrator/Desktop/lu.shp"), \code{sf}, \code{SpatVector}, \code{PackedSpatVector}, \code{RasterLayer}, \code{SpatRaster}, or \code{PackedSpatRaster} of ESRI Shapefile type or GeoTiFF type only. Region over which loi are returned. defaults to \code{dem} extent.}
+\item{clip_region}{Optional clip polygon/raster.}
 
-\item{num_inputs}{named list containing file paths (with extensions), and/or R GIS objects to be coerced into \code{SpatRaster}. Layers of interest to be summarized numerically (e.g., with mean, SD, etc.)}
+\item{num_inputs}{Named list of numeric raster layers.}
 
-\item{cat_inputs}{named list containing file paths (with extensions), and/or R GIS objects to be coerced into \code{SpatRaster}. Layers of interest to be summarized categorical (e.g., with with proportions or weighted proportions in the catchment)}
+\item{cat_inputs}{Named list of categorical raster layers.}
 
-\item{output_filename}{\code{NULL} or character (full file path with extensions). If \code{input} is provided, loi are saved in the same .zip output folder regadless of \code{output_filename}. If \code{input} not provided, file path to write resulting .zip file.}
+\item{output_filename}{\code{NULL} or path ending in \code{.gpkg}. If \code{NULL}, must be appended to \code{input}.}
 
-\item{variable_names}{named list containing variables from \code{num_inputs} and \code{cat_inputs} to include in output. If not specied, all variables are used.}
+\item{variable_names}{Named list of variable names to keep per input.}
 
-\item{return_products}{logical. If \code{TRUE}, a list containing all geospatial analysis products. If \code{FALSE}, folder path to resulting .zip file.}
+\item{return_products}{Logical. Return raster products?}
 
-\item{temp_dir}{character. File path for intermediate products; these are deleted once the function runs successfully.}
+\item{write_strategy}{Character. How processed rasters are written to the
+GeoPackage. \code{"sequential"} (default) waits for all parallel workers to
+finish, then writes every raster to the GeoPackage in one pass — simplest
+and avoids nested-future connection warnings. \code{"batched"} processes layers
+in chunks of size \code{n_cores}, writing completed rasters to the GeoPackage
+between chunks to reduce peak temporary disk usage.}
 
-\item{verbose}{logical.}
+\item{temp_dir}{Temporary file directory.}
+
+\item{verbose}{Logical.}
+
+\item{overwrite}{Logical. Overwrite existing layers?}
 }
 \value{
-If \code{return_products = TRUE}, all geospatial analysis products are returned. If \code{return_products = FALSE}, folder path to resulting .zip file.
+An \code{ihydro} object.
+The contained rasters are the processed LOI layers, aligned to the DEM and saved in the specified GeoPackage. If \code{return_products} is \code{TRUE}, the rasters are also returned as \code{SpatRaster} objects within the \code{ihydro} object for immediate use in R.
 }
 \description{
-Processes layers of interest (loi) for attribution of stream network
+Standardises numeric and categorical landscape layers to match the DEM's
+resolution, extent, and CRS. Categorical layers are one-hot encoded.
+}
+\details{
+This function is designed to process any landscape layers of interest (LOI) that
+users want to attribute to the stream network. It can handle both numeric and
+categorical raster inputs, as well as vector inputs that will be rasterized.
+The processed layers are aligned to the DEM used for hydrological processing,
+ensuring consistency in resolution, extent, and CRS. Categorical layers are one-hot encoded
+to create separate binary rasters for each category. The processed layers are saved to a
+GeoPackage for efficient storage and retrieval.
+
+When run in parallel, the function processes each LOI independently across multiple cores.
+The \code{write_strategy} argument controls how processed rasters are persisted to the GeoPackage:
+\itemize{
+\item \code{"sequential"} (default): all layers are processed in parallel first, then written to the
+GeoPackage in a single sequential pass. This approach is faster but uses more disk space temporarily.
+(note: this may trigger nested-future connection warnings in some environments, but these can be safely ignored).
+\item \code{"batched"}: layers are processed in chunks (one chunk per batch of \code{n_cores} layers).
+After each chunk finishes, its rasters are written to the GeoPackage before the next
+chunk begins. This reduces peak temporary disk usage at the cost of slightly more
+scheduling overhead.
+}
+}
+\examples{
+\dontrun{
+# Example usage
+ex_loc <- tempdir()
+
+ex_dem <- ex_data("elev_ned_30m.tif")
+ex_data("landuse_r.tif") \%>\%
+ setNames("LC") \%>\%
+ terra::writeRaster(file.path(ex_loc, "LC.tif"), overwrite = T)
+
+terra::writeVector(
+ ex_data("geology.shp"),
+ file.path(ex_loc, "geology.shp"),
+ overwrite = T
+)
+terra::writeVector(
+ ex_data("pointsources.shp"),
+ file.path(ex_loc, "pointsources.shp"),
+ overwrite = T
+)
+
+landuse_r_path <- file.path(ex_loc, "LC.tif")
+geology_path <- file.path(ex_loc, "geology.shp")
+pointsources_path <- file.path(ex_loc, "pointsources.shp")
+
+sf::read_sf(pointsources_path) \%>\%
+ mutate(pointsource = "pontsrc") \%>\%
+ st_buffer(60) \%>\%
+ sf::write_sf(file.path(ex_loc, "pointsources.shp"), overwrite = T)
+
+pointsources_path <- file.path(ex_loc, "pointsources.shp")
+
+
+# Numeric Raster
+
+whitebox::wbt_slope(
+ dem = file.path(ex_loc, "toy_dem.tif"),
+ output = file.path(ex_loc, "slope.tif")
+)
+
+# Combine loi layers
+output_filename_loi <- file.path(ex_loc, "Processed_loi.gpkg")
+
+
+loi_combined <- ihydro::process_loi(
+ dem = toy_dem,
+ num_inputs = list(
+   # Can be given as a mixture of input types (file paths, or any sf or terra format)
+   slope = file.path(ex_loc, "slope.tif")
+ ),
+ cat_inputs = list(
+   # Can be given as a mixture of input types (file paths, or any sf or terra format)
+   landcover = landuse_r_path,
+   geology = geology_path,
+   pointsources = pointsources_path
+ ),
+ variable_names = list(
+   # any unlisted inputs will be used in their entirety
+   geology = "GEO_NAME", # names listed here will subset those attributes or layers from the inputs
+   pointsources = "pontsrc"
+ ),
+ output_filename = output_filename_loi,
+ return_products = T,
+ temp_dir = NULL,
+ verbose = T
+)
+
+ihydro::ihydro_layers(loi_combined, n = Inf)
+
+}
+
 }

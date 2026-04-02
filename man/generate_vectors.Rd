@@ -2,7 +2,7 @@
 % Please edit documentation in R/generate_vectors.R
 \name{generate_vectors}
 \alias{generate_vectors}
-\title{Generate polygon subbasins, and attributed stream lines and points}
+\title{Generate polygon subbasins and attributed stream lines/points}
 \usage{
 generate_vectors(
   input,
@@ -11,37 +11,125 @@ generate_vectors(
   points = NULL,
   site_id_col = NULL,
   snap_distance = NULL,
-  break_on_noSnap = T,
-  return_products = F,
+  break_on_noSnap = TRUE,
+  return_products = FALSE,
   temp_dir = NULL,
-  compress = F,
-  verbose = F
+  compress = FALSE,
+  verbose = FALSE
 )
 }
 \arguments{
-\item{input}{resulting object from \code{generate_subbasins()}}
+\item{input}{An \code{ihydro} object from \code{\link[=process_flowdir]{process_flowdir()}}.}
 
-\item{extra_attr}{character. One or more of c("link_slope", "cont_slope", "USChnLn_To", "Elevation", "StOrd_Hack", "StOrd_Str", "StOrd_Hort", "StOrd_Shr"). Optional attributes to add to stream vector outputs.}
+\item{extra_attr}{Character vector of optional stream attributes.}
 
-\item{points}{character (full file path with extension, e.g., "C:/Users/Administrator/Desktop/points.shp"), or any GIS data object that will be converted to spatial points. Points representing sampling locations.}
+\item{points}{Optional spatial points for sampling locations.}
 
-\item{site_id_col}{character. Variable name in \code{points} that corresponds to unique site identifiers. This column will be included in all vector geospatial analysis products. Note, if multiple points have the same \code{site_id_col}, their centroid will be used and returned; if multiple points overlap after snapping, only the first is used.}
+\item{site_id_col}{Character. Column name in \code{points} for site IDs.}
 
-\item{snap_distance}{integer. Maximum distance which points will be snapped to stream lines in map units}
+\item{snap_distance}{Numeric. Max snapping distance in map units.}
 
-\item{break_on_noSnap}{logical. Should the function stop if any points are not snapped to a stream segment (i.e., are beyon snap_distance)}
+\item{break_on_noSnap}{Logical. Error if any point can't be snapped?}
 
-\item{return_products}{logical. If \code{TRUE}, a list containing the file path to write resulting \code{*.zip} file, and resulting GIS products. If \code{FALSE}, file path only.}
+\item{return_products}{Logical. Return GIS products?}
 
-\item{temp_dir}{character. File path for temporary file storage, If \code{NULL}, \code{tempfile()} will be used}
+\item{temp_dir}{Character. Temporary file directory.}
 
-\item{compress}{logical. Should output rasters be compressed, slower but more space efficient.}
+\item{compress}{Logical. Compress rasters?}
 
-\item{verbose}{logical.}
+\item{verbose}{Logical.}
 }
 \value{
-If \code{return_products = TRUE}, all geospatial analysis products are returned. If \code{return_products = FALSE}, folder path to resulting .zip file.
+An \code{ihydro} object.
+The contained vector layers in the output GeoPackage are:
+\itemize{
+\item \code{stream_lines}: Line features representing the stream network, with attributes for each link.
+\item \code{stream_links}: Point features representing pour-points for subbasins, attributed with \code{link_id} and extra attributes.
+\item \code{stream_points}: Point features representing points along stream lines identifying 'nodes' (confluence points), vs 'links' segments joining 'nodes', and also attributed with \code{link_id}, \code{trib_id}, upstream and downstream link and trib IDS and a number of extra attributes
+\item \code{snapped_points}: Point features representing the snapped locations on the stream network Any points beyond snap distance are removed, with a warning if \code{break_on_noSnap} is \code{FALSE}.
+\item \code{original_points}: Point features representing the original sampling locations
+\item \code{subbasins}: Polygon features representing the subbasins (reach contributing areas) delineated from the D8 flow direction and stream raster, optionally split at sampling points.
+The function returns an \code{ihydro} object containing references to these layers, which can be accessed using \code{\link[=read_ihydro]{read_ihydro()}} or listed with \code{\link[=ihydro_layers]{ihydro_layers()}}.
+}
 }
 \description{
-Generate polygon subbasins, and attributed stream lines and points
+Creates stream vector layers with D8-derived attributes, optionally
+snapping user-supplied sampling points to the network and splitting
+reaches at those locations. Then generates subbasin polygons using the D8 pointer and stream rasters,
+optionally splitting them at sampling points.
+}
+\details{
+The function also computes optional stream attributes based on the \code{extra_attr} argument, which can include:
+\itemize{
+\item link_slope: Average slope of each stream link.
+\item cont_slope: Continuous slope along the stream network.
+\item USChnLn_To: Total length of upstream channels for each link.
+\item StOrd_Hack, StOrd_Str, StOrd_Hort, StOrd_Shr: Different stream order classifications (Hack, Strahler, Horton, Shreve).
+These attributes are calculated using WhiteboxTools and added to the final output.
+}
+
+This function performs several steps to generate and attribute stream lines and points:
+\enumerate{
+\item It computes stream link attributes using WhiteboxTools based on the D8 flow direction and stream raster layers.
+\item It vectorizes the stream links into line features and extracts point-level attributes at each link.
+\item If user-supplied sampling points are provided, it snaps them to the nearest stream link (within a specified distance) and splits the stream reaches at those locations, creating new link IDs as needed.
+\item It identifies upstream and downstream adjacent links for each point based on the D8 flow direction.
+Finally, it writes the resulting stream lines, links, and points (with attributes) to a GeoPackage and returns an \code{ihydro} object containing references to these layers.
+}
+
+If "points" are provided, the function will attempt to snap them to the stream network.
+The \code{site_id_col} argument specifies the column in the input points that contains unique site IDs.
+The \code{snap_distance} argument controls how far a point can be from the stream network to be snapped;
+if any point cannot be snapped within this distance and \code{break_on_noSnap} is \code{TRUE}, an error will be raised.
+Points snapped to the network will be assigned a new link ID, and the stream reaches will be split at those locations.
+The artificial split links will have a \code{link_class} of 6 and a \code{link_type} of "Sample Point" to distinguish them
+from the original stream links. Their link IDs will be generated by appending a decimal suffix to the original
+link ID (e.g., if link 10 is split, the new link might be 10.1; with subsequent splits being 10.2, 10.3, etc.).
+}
+\examples{
+\dontrun{
+# Example usage
+tdir <- tempdir()
+
+ex_dem <- ex_data("elev_ned_30m.tif")
+ex_streams <- ex_data("streams.shp")
+ex_points <- ex_data("sites_nc.shp")
+output_gpkg <- file.path(tdir, "output.gpkg")
+
+ihydro_obj <- ihydro::process_flowdir(
+   dem = ex_dem,
+   threshold = 1000,
+   burn_streams = ex_streams,
+   burn_depth = 5,
+   burn_slope_dist = 250,
+   burn_slope_depth = 5,
+   min_length = 3,
+   depression_corr = "breach",
+   output_filename = output_gpkg,
+   return_products = TRUE,
+   verbose = TRUE
+)
+
+ihydro::generate_vectors(
+   input = ihydro_obj,
+   points = ex_points,
+   site_id_col = "site_id",
+   snap_distance = 150,
+   break_on_noSnap = FALSE,
+   return_products = TRUE,
+   verbose = TRUE
+)
+
+ihydro::ihydro_layers(ihydro_obj, n = Inf)
+
+mapview::mapview(
+ list(
+  ihydro::read_ihydro(ihydro_obj, "stream_lines"),
+  ihydro::read_ihydro(ihydro_obj, "subbasins"),
+  ihydro::read_ihydro(ihydro_obj, "snapped_points"),
+ )
+)
+
+}
+
 }

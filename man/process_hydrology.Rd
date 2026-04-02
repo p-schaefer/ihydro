@@ -2,68 +2,113 @@
 % Please edit documentation in R/process_hydrology.R
 \name{process_hydrology}
 \alias{process_hydrology}
-\title{Generate geospatial analysis products}
+\title{Generate all hydrology products from a DEM}
 \usage{
 process_hydrology(
   dem,
   output_filename,
   threshold,
   burn_streams = NULL,
-  burn_depth = 5,
+  burn_depth = NULL,
+  burn_slope_dist = NULL,
+  burn_slope_depth = NULL,
   min_length = NULL,
   depression_corr = c(NULL, "fill", "breach"),
   extra_attr = c("link_slope", "cont_slope", "USChnLn_To", "Elevation", "StOrd_Hack",
     "StOrd_Str", "StOrd_Hort", "StOrd_Shr"),
   points = NULL,
   snap_distance = NULL,
-  break_on_noSnap = T,
+  break_on_noSnap = TRUE,
   site_id_col = NULL,
-  pwise_dist = F,
-  pwise_all_links = F,
-  return_products = F,
+  pwise_dist = FALSE,
+  pwise_all_links = FALSE,
+  return_products = FALSE,
   temp_dir = NULL,
-  compress = F,
-  verbose = F
+  compress = FALSE,
+  verbose = FALSE
 )
 }
 \arguments{
-\item{dem}{character (full file path with extension, e.g., "C:/Users/Administrator/Desktop/dem.tif"), \code{RasterLayer}, \code{SpatRaster}, or \code{PackedSpatRaster} of GeoTiFF type. Digital elevation model raster.}
+\item{dem}{Character path, \code{SpatRaster}, or \code{PackedSpatRaster} for a DEM.}
 
-\item{output_filename}{character. File path to write resulting .zip file.}
+\item{output_filename}{Character path ending in \code{.gpkg}.}
 
-\item{threshold}{integer. Flow accumulation threshold for stream initiation.}
+\item{threshold}{Integer. Flow accumulation threshold for stream initiation.}
 
-\item{burn_streams}{character. (full file path with extension, e.g., "C:/Users/Administrator/Desktop/input.shp"), sf, SpatVector, PackedSpatVector, RasterLayer, SpatRaster, or PackedSpatRaster. Stream vector to burn into DEM.}
+\item{burn_streams}{Optional stream layer to burn into the DEM.}
 
-\item{burn_depth}{numeric. Depth (in meters) to burn stream into the DEM.}
+\item{burn_depth}{Numeric burn depth in map elevation units (default \code{NULL}).}
 
-\item{min_length}{numeric. Minimum tributary length, shorter 1st order tributaries are removed.}
+\item{burn_slope_dist}{Numeric burn slope width in meters (default \code{NULL}).}
 
-\item{depression_corr}{NULL or character. One of c("fill","breach"), specifying whether depressions should be filled or breached. NULL will perform neither, if DEM is already corrected.}
+\item{burn_slope_depth}{Numeric burn slope depth in map elevation units (default \code{NULL}).}
 
-\item{extra_attr}{character. One or more of c("link_slope", "cont_slope", "USChnLn_To", "Elevation", "StOrd_Hack", "StOrd_Str", "StOrd_Hort", "StOrd_Shr"). Optional attributes to add to stream vector outputs.}
+\item{min_length}{Numeric. Minimum tributary length in meters; shorter 1st-order
+tributaries are removed.}
 
-\item{points}{character (full file path with extension, e.g., "C:/Users/Administrator/Desktop/points.shp"), or any GIS data object that will be converted to spatial points. Points representing sampling locations.}
+\item{depression_corr}{\code{NULL}, \code{"fill"} \code{\link[whitebox:wbt_fill_depressions]{whitebox::wbt_fill_depressions()}}, or \code{"breach"} \code{\link[whitebox:wbt_breach_depressions]{whitebox::wbt_breach_depressions()}}.}
 
-\item{snap_distance}{integer. Maximum distance which points will be snapped to stream lines in map units}
+\item{extra_attr}{Character vector of optional stream attributes.}
 
-\item{site_id_col}{character. Variable name in \code{points} that corresponds to unique site identifiers. This column will be included in all vector geospatial analysis products. Note, if multiple points have the same \code{site_id_col}, their centroid will be used and returned; if multiple points overlap after snapping, only the first is used.}
+\item{points}{Optional spatial points for sampling locations.}
 
-\item{pwise_dist}{logical. Calculate pairwise distances.}
+\item{snap_distance}{Numeric. Max snapping distance in map units.}
 
-\item{pwise_all_links}{logical. Should all pairwise distances be calculate, or only those originating from sampling points}
+\item{break_on_noSnap}{Logical. Error if any point can't be snapped?}
 
-\item{return_products}{logical. If \code{TRUE}, a list containing all geospatial analysis products. If \code{FALSE}, folder path to resulting .zip file.}
+\item{site_id_col}{Character. Column name in \code{points} for site IDs.}
 
-\item{temp_dir}{character. File path for intermediate products; these are deleted once the function runs successfully.}
+\item{pwise_dist}{Logical. Calculate all downstream flow-connected pairwise distances?}
 
-\item{compress}{logical. Should output rasters be compressed, slower but more space efficient.}
+\item{pwise_all_links}{Logical. Calculate all flow un-connected pairwise distances?}
 
-\item{verbose}{logical.}
+\item{return_products}{Logical. Return raster products in addition to the
+file path?}
+
+\item{temp_dir}{Character directory for temporary files.}
+
+\item{compress}{Logical. Compress output rasters?}
+
+\item{verbose}{Logical.}
 }
 \value{
-If \code{return_products = TRUE}, all geospatial analysis products are returned. If \code{return_products = FALSE}, folder path to resulting .zip file.
+An \code{ihydro} object.
 }
 \description{
-\code{ihydro::process_hydrology} processes a DEM into various geospatial analysis products.
+Convenience wrapper that calls \code{\link[=process_flowdir]{process_flowdir()}}, \code{\link[=generate_vectors]{generate_vectors()}},
+and \code{\link[=trace_flowpaths]{trace_flowpaths()}} in sequence.
+}
+\examples{
+\dontrun{
+# Example usage
+tdir <- tempdir()
+
+ex_dem <- ex_data("elev_ned_30m.tif")
+ex_streams <- ex_data("streams.shp")
+ex_points <- ex_data("sites_nc.shp")
+output_gpkg <- file.path(tdir, "output.gpkg")
+
+# Process Hydrology
+ihydro_obj <- ihydro::process_hydrology(
+   dem = ex_dem,
+   threshold = 1000,
+   burn_streams = ex_streams,
+   burn_depth = 5,
+   burn_slope_dist = 250,
+   burn_slope_depth = 5,
+   min_length = 3,
+   depression_corr = "breach",
+   points = ex_points,
+   site_id_col = "site_id",
+   snap_distance = 150,
+   break_on_noSnap = FALSE,
+   pwise_dist = TRUE,
+   pwise_all_links = TRUE,
+   output_filename = output_gpkg,
+   return_products = TRUE,
+   verbose = TRUE
+)
+
+}
+
 }
