@@ -73,65 +73,65 @@ attrib_points <- function(
   # -- Validate inputs ---
   check_ihydro(input)
 
-  temp_dir      <- ensure_temp_dir(temp_dir)
+  temp_dir <- ensure_temp_dir(temp_dir)
   target_o_type <- match.arg(target_o_type)
-  weighting_scheme  <- match.arg(
-    weighting_scheme, several.ok = TRUE
+  weighting_scheme <- match.arg(
+    weighting_scheme,
+    several.ok = TRUE
   )
   loi_numeric_stats <- match.arg(
-    loi_numeric_stats, several.ok = TRUE
+    loi_numeric_stats,
+    several.ok = TRUE
   )
   loi_numeric_stats <- stats::setNames(
-    loi_numeric_stats, loi_numeric_stats
+    loi_numeric_stats,
+    loi_numeric_stats
   )
 
-  db_fp   <- input$outfile
+  db_fp <- input$outfile
   n_cores <- n_workers()
 
   # -- Configure external tools ---
   whitebox::wbt_options(
     exe_path = whitebox::wbt_exe_path(),
-    verbose  = verbose > 2,
-    wd       = temp_dir
+    verbose = verbose > 2,
+    wd = temp_dir
   )
+
   old_terra_opts <- set_terra_options(
-    n_workers = 1L,
-    temp_dir  = temp_dir,
-    verbose   = verbose > 3
+    n_cores = n_cores,
+    temp_dir = temp_dir,
+    verbose = verbose > 3
   )
   on.exit(restore_terra_options(old_terra_opts), add = TRUE)
-
-  old_opts <- options(
-    scipen                 = 999,
-    dplyr.summarise.inform = FALSE,
-    future.rng.onMisuse    = "ignore"
-  )
-  on.exit(options(old_opts), add = TRUE)
 
   # -- Resolve LOI file ---
   loi_file <- .ap_resolve_loi(input, loi_file)
   loi_meta <- read_ihydro(loi_file, "loi_meta")
 
-  if (is.null(loi_cols)) loi_cols <- loi_meta$loi_var_nms
+  if (is.null(loi_cols)) {
+    loi_cols <- loi_meta$loi_var_nms
+  }
   bad_cols <- loi_cols[!loi_cols %in% loi_meta$loi_var_nms]
   if (length(bad_cols) > 0L) {
     cli::cli_abort("LOI columns not found: {.val {bad_cols}}")
   }
   loi_meta <- dplyr::filter(
-    loi_meta, loi_var_nms %in% loi_cols
+    loi_meta,
+    loi_var_nms %in% loi_cols
   )
 
   # -- Resolve targets ---
   target_ids <- target_id_fun(
-    db_fp         = db_fp,
+    db_fp = db_fp,
     sample_points = sample_points,
-    link_id       = link_id,
+    link_id = link_id,
     segment_whole = target_o_type == "segment_whole",
     target_o_type = target_o_type
   )
   target_o <- target_o_fun(
-    db_fp         = db_fp,
-    target_IDs    = target_ids,
+    db_fp = db_fp,
+    target_IDs = target_ids,
     target_o_type = target_o_type
   )
 
@@ -142,12 +142,17 @@ attrib_points <- function(
   temp_dir_sub <- file.path(temp_dir, basename(tempfile()))
   dir.create(temp_dir_sub, recursive = TRUE)
   on.exit(
-    unlink(temp_dir_sub, recursive = TRUE, force = TRUE),
+    suppressWarnings(
+      unlink(temp_dir_sub, recursive = TRUE, force = TRUE)
+    ),
     add = TRUE
   )
 
   dem_layers <- c(
-    "dem_streams_d8", "dem_final", "dem_accum_d8", "dem_d8"
+    "dem_streams_d8",
+    "dem_final",
+    "dem_accum_d8",
+    "dem_d8"
   )
   for (lyr in dem_layers) {
     terra::writeRaster(
@@ -158,23 +163,25 @@ attrib_points <- function(
   }
 
   # -- Compute attributes in parallel ---
-  if (verbose) message("Calculating attributes")
+  if (verbose) {
+    message("Calculating attributes")
+  }
 
   raw_out <- .ap_dispatch(
-    target_o          = target_o,
-    input             = input,
-    loi_file          = loi_file,
-    weighting_scheme  = weighting_scheme,
-    loi_cols          = loi_cols,
+    target_o = target_o,
+    input = input,
+    loi_file = loi_file,
+    weighting_scheme = weighting_scheme,
+    loi_cols = loi_cols,
     loi_numeric_stats = loi_numeric_stats,
-    loi_meta          = loi_meta,
-    temp_dir_sub      = temp_dir_sub,
-    return_products   = return_products,
-    inv_function      = inv_function,
-    clip_region       = clip_region,
-    OS_combine        = OS_combine,
-    n_cores           = n_cores,
-    verbose           = verbose
+    loi_meta = loi_meta,
+    temp_dir_sub = temp_dir_sub,
+    return_products = return_products,
+    inv_function = inv_function,
+    clip_region = clip_region,
+    OS_combine = OS_combine,
+    n_cores = n_cores,
+    verbose = verbose
   )
 
   # -- Rename columns to fasttrib_points convention ---
@@ -182,9 +189,9 @@ attrib_points <- function(
 
   # -- Join back to original target IDs ---
   target_ids_out <- target_id_fun(
-    db_fp         = db_fp,
+    db_fp = db_fp,
     sample_points = sample_points,
-    link_id       = link_id,
+    link_id = link_id,
     segment_whole = FALSE,
     target_o_type = target_o_type
   )
@@ -195,18 +202,19 @@ attrib_points <- function(
       raw_out,
       pour_point_id = as.character(pour_point_id)
     ),
-    by       = c("link_id" = "pour_point_id"),
+    by = c("link_id" = "pour_point_id"),
     multiple = "all"
   )
 
   # -- Write CSV (exclude list-column products) ---
   data.table::fwrite(
     x = dplyr::select(
-      final_out, -tidyselect::any_of("products")
+      final_out,
+      -tidyselect::any_of("products")
     ),
-    file         = out_filename,
-    buffMB       = 128L,
-    nThread      = 1L,
+    file = out_filename,
+    buffMB = 128L,
+    nThread = 1L,
     showProgress = FALSE
   )
 
@@ -247,9 +255,12 @@ attrib_points <- function(
 #' @noRd
 .ap_resolve_clip <- function(clip_region, temp_dir) {
   clip_region <- process_input(
-    clip_region, input_name = "clip_region"
+    clip_region,
+    input_name = "clip_region"
   )
-  if (is.null(clip_region)) return(NULL)
+  if (is.null(clip_region)) {
+    return(NULL)
+  }
   if (inherits(clip_region, "SpatRaster")) {
     fp <- file.path(temp_dir, "clip_region.tif")
     terra::writeRaster(clip_region, fp, datatype = "FLT4S")
@@ -274,63 +285,82 @@ attrib_points <- function(
 #'
 #' @noRd
 .ap_dispatch <- function(
-  target_o, input, loi_file, weighting_scheme,
-  loi_cols, loi_numeric_stats, loi_meta, temp_dir_sub,
-  return_products, inv_function, clip_region,
-  OS_combine, n_cores, verbose
+  target_o,
+  input,
+  loi_file,
+  weighting_scheme,
+  loi_cols,
+  loi_numeric_stats,
+  loi_meta,
+  temp_dir_sub,
+  return_products,
+  inv_function,
+  clip_region,
+  OS_combine,
+  n_cores,
+  verbose
 ) {
   # carrier::crate captures only explicitly-listed values,
   # preventing the entire parent environment from being
   # serialised to workers.
   worker <- carrier::crate(
     function(
-      geom, link_id_val,
-      input, loi_file, weighting_scheme,
-      loi_cols, loi_numeric_stats,
-      loi_meta, temp_dir_sub, return_products,
-      inv_function, clip_region,
-      OS_combine, n_cores
+      geom,
+      link_id_val,
+      input,
+      loi_file,
+      weighting_scheme,
+      loi_cols,
+      loi_numeric_stats,
+      loi_meta,
+      temp_dir_sub,
+      return_products,
+      inv_function,
+      clip_region,
+      OS_combine,
+      n_cores
     ) {
       ihydro:::.ap_process_one(
-        geom              = geom,
-        link_id_val       = link_id_val,
-        input             = input,
-        loi_file          = loi_file,
-        weighting_scheme  = weighting_scheme,
-        loi_cols          = loi_cols,
+        geom = geom,
+        link_id_val = link_id_val,
+        input = input,
+        loi_file = loi_file,
+        weighting_scheme = weighting_scheme,
+        loi_cols = loi_cols,
         loi_numeric_stats = loi_numeric_stats,
-        loi_meta          = loi_meta,
-        temp_dir_sub      = temp_dir_sub,
-        return_products   = return_products,
-        inv_function      = inv_function,
-        clip_region       = clip_region,
-        OS_combine        = OS_combine,
-        n_cores           = n_cores
+        loi_meta = loi_meta,
+        temp_dir_sub = temp_dir_sub,
+        return_products = return_products,
+        inv_function = inv_function,
+        clip_region = clip_region,
+        OS_combine = OS_combine,
+        n_cores = n_cores
       )
     }
   )
 
   # Split target_o into individual rows
-  geom_list    <- split(
-    target_o$geom, seq_len(nrow(target_o))
+  geom_list <- split(
+    target_o$geom,
+    seq_len(nrow(target_o))
   )
   link_id_list <- as.list(target_o$link_id)
 
   args <- list(
-    geom              = geom_list,
-    link_id_val       = link_id_list,
-    input             = list(input),
-    loi_file          = list(loi_file),
-    weighting_scheme  = list(weighting_scheme),
-    loi_cols          = list(loi_cols),
+    geom = geom_list,
+    link_id_val = link_id_list,
+    input = list(input),
+    loi_file = list(loi_file),
+    weighting_scheme = list(weighting_scheme),
+    loi_cols = list(loi_cols),
     loi_numeric_stats = list(loi_numeric_stats),
-    loi_meta          = list(loi_meta),
-    temp_dir_sub      = list(temp_dir_sub),
-    return_products   = list(return_products),
-    inv_function      = list(inv_function),
-    clip_region       = list(clip_region),
-    OS_combine        = list(OS_combine),
-    n_cores           = list(n_cores)
+    loi_meta = list(loi_meta),
+    temp_dir_sub = list(temp_dir_sub),
+    return_products = list(return_products),
+    inv_function = list(inv_function),
+    clip_region = list(clip_region),
+    OS_combine = list(OS_combine),
+    n_cores = list(n_cores)
   )
 
   # First pass: parallel, scheduling = 1L feeds one task
@@ -339,9 +369,9 @@ attrib_points <- function(
     args,
     worker,
     .options = furrr::furrr_options(
-      globals    = FALSE,
-      seed       = NULL,
-      scheduling = 1L
+      globals = FALSE,
+      seed = NULL,
+      scheduling = 4L
     )
   )
   out <- dplyr::bind_rows(results)
@@ -354,7 +384,8 @@ attrib_points <- function(
   if (length(incomplete_ids) > 0L) {
     if (verbose) {
       message(
-        "Retrying ", length(incomplete_ids),
+        "Retrying ",
+        length(incomplete_ids),
         " point(s) sequentially."
       )
     }
@@ -372,7 +403,8 @@ attrib_points <- function(
     out_retry <- dplyr::bind_rows(retry_results)
     out <- dplyr::bind_rows(
       dplyr::filter(
-        out, !pour_point_id %in% incomplete_ids
+        out,
+        !pour_point_id %in% incomplete_ids
       ),
       out_retry
     )
@@ -393,23 +425,28 @@ attrib_points <- function(
 #'
 #' @noRd
 .ap_process_one <- function(
-  geom, link_id_val,
-  input, loi_file, weighting_scheme,
-  loi_cols, loi_numeric_stats,
-  loi_meta, temp_dir_sub, return_products,
-  inv_function, clip_region,
-  OS_combine, n_cores
+  geom,
+  link_id_val,
+  input,
+  loi_file,
+  weighting_scheme,
+  loi_cols,
+  loi_numeric_stats,
+  loi_meta,
+  temp_dir_sub,
+  return_products,
+  inv_function,
+  clip_region,
+  OS_combine,
+  n_cores
 ) {
   # Per-worker terra memory management
   old_terra_opts <- ihydro:::set_terra_options(
-    n_workers = n_cores,
-    temp_dir  = temp_dir_sub,
-    verbose   = FALSE
+    n_cores = n_cores,
+    temp_dir = temp_dir_sub,
+    verbose = FALSE
   )
-  on.exit(
-    ihydro:::restore_terra_options(old_terra_opts),
-    add = TRUE
-  )
+  on.exit(ihydro:::restore_terra_options(old_terra_opts), add = TRUE)
 
   # Build target_O sf from the geometry
   y <- sf::st_as_sf(geom) |>
@@ -417,19 +454,22 @@ attrib_points <- function(
 
   # Per-task temp directory for hydroweight output
   hw_dir <- file.path(
-    temp_dir_sub, basename(tempfile())
+    temp_dir_sub,
+    basename(tempfile())
   )
   dir.create(hw_dir, recursive = TRUE)
   on.exit(
-    unlink(hw_dir, recursive = TRUE, force = TRUE),
+    suppressWarnings(
+      unlink(hw_dir, recursive = TRUE, force = TRUE)
+    ),
     add = TRUE
   )
 
   # Load DEM rasters (proxies, no data in RAM)
-  target_S   <- terra::rast(
+  target_S <- terra::rast(
     file.path(temp_dir_sub, "dem_streams_d8.tif")
   )
-  dem        <- terra::rast(
+  dem <- terra::rast(
     file.path(temp_dir_sub, "dem_final.tif")
   )
   flow_accum <- terra::rast(
@@ -439,14 +479,15 @@ attrib_points <- function(
   # Get catchment
   catch <- tryCatch(
     ihydro::get_catchment(
-      input, link_id = link_id_val
+      input,
+      link_id = link_id_val
     ),
     error = function(cnd) NULL
   )
   if (is.null(catch)) {
     return(tibble::tibble(
       pour_point_id = link_id_val,
-      status        = "Incomplete"
+      status = "Incomplete"
     ))
   }
 
@@ -454,20 +495,20 @@ attrib_points <- function(
   hw <- tryCatch(
     suppressMessages(
       ihydro::hydroweight(
-        hydroweight_dir      = hw_dir,
-        target_S             = target_S,
-        target_O             = y,
-        target_uid           = link_id_val,
-        OS_combine           = OS_combine,
-        dem                  = dem,
-        flow_accum           = flow_accum,
-        clip_region          = catch,
-        weighting_scheme     = weighting_scheme,
-        inv_function         = inv_function,
-        return_products      = return_products,
+        hydroweight_dir = hw_dir,
+        target_S = target_S,
+        target_O = y,
+        target_uid = link_id_val,
+        OS_combine = OS_combine,
+        dem = dem,
+        flow_accum = flow_accum,
+        clip_region = catch,
+        weighting_scheme = weighting_scheme,
+        inv_function = inv_function,
+        return_products = return_products,
         wrap_return_products = TRUE,
-        save_output          = TRUE,
-        clean_tempfiles      = TRUE
+        save_output = TRUE,
+        clean_tempfiles = TRUE
       )
     ),
     error = function(cnd) NULL
@@ -475,7 +516,7 @@ attrib_points <- function(
   if (is.null(hw)) {
     return(tibble::tibble(
       pour_point_id = link_id_val,
-      status        = "Incomplete"
+      status = "Incomplete"
     ))
   }
 
@@ -488,21 +529,33 @@ attrib_points <- function(
   ]
 
   hw_attr_num <- .ap_safe_hw_attr(
-    loi_file, num_vars, loi_numeric = TRUE,
-    loi_numeric_stats, catch, link_id_val,
-    hw_dir, clip_region, return_products
+    loi_file,
+    num_vars,
+    loi_numeric = TRUE,
+    loi_numeric_stats,
+    catch,
+    link_id_val,
+    hw_dir,
+    clip_region,
+    return_products
   )
   hw_attr_cat <- .ap_safe_hw_attr(
-    loi_file, cat_vars, loi_numeric = FALSE,
-    loi_numeric_stats, catch, link_id_val,
-    hw_dir, clip_region, return_products
+    loi_file,
+    cat_vars,
+    loi_numeric = FALSE,
+    loi_numeric_stats,
+    catch,
+    link_id_val,
+    hw_dir,
+    clip_region,
+    return_products
   )
 
   # If both failed, mark incomplete
   if (is.null(hw_attr_num) && is.null(hw_attr_cat)) {
     return(tibble::tibble(
       pour_point_id = link_id_val,
-      status        = "Incomplete"
+      status = "Incomplete"
     ))
   }
 
@@ -553,12 +606,14 @@ attrib_points <- function(
   dplyr::bind_cols(
     tibble::tibble(
       products = list(p_out)[1],
-      status   = "Complete"
+      status = "Complete"
     ),
     attr_joined
   ) |>
     dplyr::select(
-      pour_point_id, status, tidyselect::everything()
+      pour_point_id,
+      status,
+      tidyselect::everything()
     )
 }
 
@@ -568,29 +623,38 @@ attrib_points <- function(
 #' Returns NULL on error or when loi_vars is empty.
 #' @noRd
 .ap_safe_hw_attr <- function(
-  loi_file, loi_vars, loi_numeric, loi_numeric_stats,
-  catch, link_id_val, hw_dir, clip_region,
+  loi_file,
+  loi_vars,
+  loi_numeric,
+  loi_numeric_stats,
+  catch,
+  link_id_val,
+  hw_dir,
+  clip_region,
   return_products
 ) {
-  if (length(loi_vars) == 0L) return(NULL)
+  if (length(loi_vars) == 0L) {
+    return(NULL)
+  }
   tryCatch(
     suppressMessages(
       ihydro::hydroweight_attributes(
-        loi               = terra::rast(
-          loi_file$outfile, lyrs = loi_vars
+        loi = terra::rast(
+          loi_file$outfile,
+          lyrs = loi_vars
         ),
-        loi_columns       = loi_vars,
-        loi_numeric       = loi_numeric,
+        loi_columns = loi_vars,
+        loi_numeric = loi_numeric,
         loi_numeric_stats = loi_numeric_stats,
-        roi               = catch,
-        roi_uid           = link_id_val,
-        roi_uid_col       = "pour_point_id",
-        distance_weights  = file.path(
+        roi = catch,
+        roi_uid = link_id_val,
+        roi_uid_col = "pour_point_id",
+        distance_weights = file.path(
           hw_dir,
           paste0(link_id_val, "_inv_distances.zip")
         ),
-        remove_region     = clip_region,
-        return_products   = return_products
+        remove_region = clip_region,
+        return_products = return_products
       )
     ),
     error = function(cnd) NULL
@@ -630,15 +694,22 @@ attrib_points <- function(
   # 3. Bare lumped stats: "{loi}_mean" -> "{loi}_lumped_mean"
   #    Only if NOT preceded by a scheme name.
   lumped_stats <- c(
-    "mean", "sd", "median", "min", "max",
-    "sum", "cell_count", "NA_cell_count"
+    "mean",
+    "sd",
+    "median",
+    "min",
+    "max",
+    "sum",
+    "cell_count",
+    "NA_cell_count"
   )
   scheme_pat <- paste0("_(", scheme_rx, ")_")
   for (stat in lumped_stats) {
-    sfx     <- paste0("_", stat, "$")
+    sfx <- paste0("_", stat, "$")
     has_sfx <- grepl(sfx, nms)
     has_sch <- grepl(
-      paste0(scheme_pat, stat, "$"), nms
+      paste0(scheme_pat, stat, "$"),
+      nms
     )
     is_lumped <- has_sfx & !has_sch
     nms[is_lumped] <- gsub(
@@ -651,12 +722,14 @@ attrib_points <- function(
   # 4. Bare "{cat}_prop" -> "{cat}_lumped_prop"
   has_prop <- grepl("_prop$", nms)
   has_sch_prop <- grepl(
-    paste0(scheme_pat, "prop$"), nms
+    paste0(scheme_pat, "prop$"),
+    nms
   )
-  is_bare_prop <- has_prop & !has_sch_prop &
-    !grepl("_lumped_prop$", nms)
+  is_bare_prop <- has_prop & !has_sch_prop & !grepl("_lumped_prop$", nms)
   nms[is_bare_prop] <- gsub(
-    "_prop$", "_lumped_prop", nms[is_bare_prop]
+    "_prop$",
+    "_lumped_prop",
+    nms[is_bare_prop]
   )
 
   colnames(df) <- nms

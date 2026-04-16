@@ -95,15 +95,6 @@ process_flowdir <- function(
     }
     threshold <- as.integer(threshold)
   }
-  if (!is.null(burn_depth) && !is.numeric(burn_depth)) {
-    cli::cli_abort("{.arg burn_depth} must be numeric.")
-  }
-  if (!is.null(burn_slope_dist) && !is.numeric(burn_slope_dist)) {
-    cli::cli_abort("{.arg burn_slope_dist} must be numeric.")
-  }
-  if (!is.null(burn_slope_depth) && !is.numeric(burn_slope_depth)) {
-    cli::cli_abort("{.arg burn_slope_depth} must be numeric.")
-  }
   if (
     !is.null(burn_streams) && (is.null(burn_depth) && is.null(burn_slope_depth))
   ) {
@@ -111,6 +102,18 @@ process_flowdir <- function(
       "{.arg burn_depth} and/or {.arg burn_slope_depth} must be provided when {.arg burn_streams} is present"
     )
   }
+  if (!is.null(burn_streams)) {
+    if (!is.null(burn_depth) && !is.numeric(burn_depth)) {
+      cli::cli_abort("{.arg burn_depth} must be numeric.")
+    }
+    if (!is.null(burn_slope_dist) && !is.numeric(burn_slope_dist)) {
+      cli::cli_abort("{.arg burn_slope_dist} must be numeric.")
+    }
+    if (!is.null(burn_slope_depth) && !is.numeric(burn_slope_depth)) {
+      cli::cli_abort("{.arg burn_slope_depth} must be numeric.")
+    }
+  }
+
   if (!is.null(min_length) && !is.numeric(min_length)) {
     cli::cli_abort("{.arg min_length} must be numeric.")
   }
@@ -326,7 +329,7 @@ burn_dem <- function(
   bbox <- terra::as.polygons(terra::ext(dem), crs = target_crs)
 
   resol <- terra::cellSize(dem, unit = "m")
-  resol <- unlist(terra::global(resol,"mean"), use.names = F)
+  resol <- unlist(terra::global(resol, "mean"), use.names = F)
   resol <- sqrt(resol)
 
   if (is.null(burn_slope_dist)) {
@@ -392,7 +395,10 @@ burn_dem <- function(
     ds_dist <- terra::rast(file.path(temp_dir, "stream_ds_dist.tif"))
     ds_dist <- ds_dist * rast_streams
 
-    max_dist <- unlist(terra::global(ds_dist, "max",na.rm = T), use.names = FALSE)
+    max_dist <- unlist(
+      terra::global(ds_dist, "max", na.rm = T),
+      use.names = FALSE
+    )
     if (max_dist == 0) {
       cli::cli_abort(
         "{.arg burn_slope_dist} is too small for the supplied dem."
@@ -406,14 +412,30 @@ burn_dem <- function(
   }
 
   if (burn_depth != 0) {
-
-    sr1<-terra::mask(dem_final,burn_streams %>% sf::st_as_sf() %>% sf::st_buffer(resol*3) %>% terra::vect())
-    dem_final[!is.na(sr1)]<-sr1-ceiling(burn_depth/3)
-    sr1<-terra::mask(dem_final,burn_streams %>% sf::st_as_sf() %>% sf::st_buffer(resol*2) %>% terra::vect())
-    dem_final[!is.na(sr1)]<-sr1-ceiling(burn_depth/3)
-    sr1<-terra::mask(dem_final,burn_streams %>% sf::st_as_sf() %>% sf::st_buffer(resol*1) %>% terra::vect())
-    dem_final[!is.na(sr1)]<-sr1-ceiling(burn_depth/3)
-
+    sr1 <- terra::mask(
+      dem_final,
+      burn_streams %>%
+        sf::st_as_sf() %>%
+        sf::st_buffer(resol * 3) %>%
+        terra::vect()
+    )
+    dem_final[!is.na(sr1)] <- sr1 - ceiling(burn_depth / 3)
+    sr1 <- terra::mask(
+      dem_final,
+      burn_streams %>%
+        sf::st_as_sf() %>%
+        sf::st_buffer(resol * 2) %>%
+        terra::vect()
+    )
+    dem_final[!is.na(sr1)] <- sr1 - ceiling(burn_depth / 3)
+    sr1 <- terra::mask(
+      dem_final,
+      burn_streams %>%
+        sf::st_as_sf() %>%
+        sf::st_buffer(resol * 1) %>%
+        terra::vect()
+    )
+    dem_final[!is.na(sr1)] <- sr1 - ceiling(burn_depth / 3)
 
     # rast_streams[rast_streams != 1] <- NA
     #

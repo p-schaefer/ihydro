@@ -329,7 +329,11 @@ process_loi <- function(
 
         results_chunk <- furrr::future_pmap(
           ip_chunk,
-          .options = furrr::furrr_options(globals = FALSE, seed = NULL),
+          .options = furrr::furrr_options(
+            globals = FALSE,
+            seed = NULL,
+            scheduling = 4L
+          ),
           process_single_loi_worker
         )
         future_proc[chunk] <- results_chunk
@@ -358,7 +362,11 @@ process_loi <- function(
 
       future_proc <- furrr::future_pmap(
         ip,
-        .options = furrr::furrr_options(globals = FALSE, seed = NULL),
+        .options = furrr::furrr_options(
+          globals = FALSE,
+          seed = NULL,
+          scheduling = 4L
+        ),
         process_single_loi_worker
       )
     })

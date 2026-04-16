@@ -77,16 +77,38 @@ process_hydrology <- function(
 ) {
   # ── Validation ──────────────────────────────────────────────────────────
   if (!is.integer(threshold)) {
-    cli::cli_alert_info("{.arg threshold} was converted to an integer.")
+    if (as.integer(threshold) != threshold) {
+      cli::cli_alert_info("{.arg threshold} was converted to an integer.")
+    }
     threshold <- as.integer(threshold)
   }
-  if (!is.null(snap_distance) && !is.integer(snap_distance)) {
-    cli::cli_alert_info("{.arg snap_distance} was converted to an integer.")
-    snap_distance <- as.integer(snap_distance)
+  if (
+    !is.null(burn_streams) && (is.null(burn_depth) && is.null(burn_slope_depth))
+  ) {
+    cli::cli_abort(
+      "{.arg burn_depth} and/or {.arg burn_slope_depth} must be provided when {.arg burn_streams} is present"
+    )
   }
-  if (!is.numeric(burn_depth)) {
-    cli::cli_abort("{.arg burn_depth} must be numeric.")
+  if (!is.null(burn_streams)) {
+    if (!is.null(burn_depth) && !is.numeric(burn_depth)) {
+      cli::cli_abort("{.arg burn_depth} must be numeric.")
+    }
+    if (!is.null(burn_slope_dist) && !is.numeric(burn_slope_dist)) {
+      cli::cli_abort("{.arg burn_slope_dist} must be numeric.")
+    }
+    if (!is.null(burn_slope_depth) && !is.numeric(burn_slope_depth)) {
+      cli::cli_abort("{.arg burn_slope_depth} must be numeric.")
+    }
   }
+
+  if (!is.null(min_length) && !is.numeric(min_length)) {
+    cli::cli_abort("{.arg min_length} must be numeric.")
+  }
+  stopifnot(
+    is.logical(return_products),
+    is.logical(compress),
+    is.logical(verbose)
+  )
   burn_depth <- as.integer(burn_depth)
 
   stopifnot(

@@ -518,7 +518,11 @@ compute_point_weights <- function(
             inv_function = list(inv_function),
             verbose = list(verbose)
           ),
-          .options = furrr::furrr_options(globals = FALSE, seed = NULL),
+          .options = furrr::furrr_options(
+            globals = FALSE,
+            seed = NULL,
+            scheduling = 4L
+          ),
           point_weight_worker
         )
 
@@ -549,7 +553,11 @@ compute_point_weights <- function(
           inv_function = list(inv_function),
           verbose = list(verbose)
         ),
-        .options = furrr::furrr_options(globals = FALSE, seed = NULL),
+        .options = furrr::furrr_options(
+          globals = FALSE,
+          seed = NULL,
+          scheduling = 4L
+        ),
         point_weight_worker
       )
     })

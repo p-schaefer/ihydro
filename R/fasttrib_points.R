@@ -38,6 +38,7 @@
 #'   finish, then writes every raster in one pass. `"batched"` processes unnest
 #'   groups in chunks, writing to the GeoPackage between chunks to reduce peak
 #'   temporary disk usage.
+#' @param max_split Integer. Maximum number of catchments to assign a parallel process at a time.
 #' @param temp_dir Temporary directory for intermediate files.
 #' @param verbose Logical.
 #'
@@ -52,6 +53,7 @@
 #' @examples
 #' \dontrun{
 #' # Example usage
+#' library(ihydro)
 #'
 #' future::plan(future::multisession(workers = 3))
 #'
@@ -87,9 +89,10 @@
 #' ex_loc <- tempdir()
 #'
 #' ex_dem <- ex_data("elev_ned_30m.tif")
+#' toy_dem <- terra::writeRaster(ex_dem, file.path(ex_loc, "toy_dem.tif"), overwrite = TRUE)
 #' ex_data("landuse_r.tif") %>%
 #'  setNames("LC") %>%
-#'  terra::writeRaster(file.path(ex_loc, "LC.tif"), overwrite = T)
+#'  terra::writeRaster(file.path(ex_loc, "LC.tif"), overwrite = TRUE)
 #'
 #' terra::writeVector(
 #'  ex_data("geology.shp"),
@@ -107,8 +110,8 @@
 #' pointsources_path <- file.path(ex_loc, "pointsources.shp")
 #'
 #' sf::read_sf(pointsources_path) %>%
-#'  mutate(pointsource = "pontsrc") %>%
-#'  st_buffer(60) %>%
+#'  dplyr::mutate(pointsource = "pontsrc") %>%
+#'  sf::st_buffer(60) %>%
 #'  sf::write_sf(file.path(ex_loc, "pointsources.shp"), overwrite = T)
 #'
 #' pointsources_path <- file.path(ex_loc, "pointsources.shp")
@@ -146,9 +149,9 @@
 #' # Attribute sample points
 #' output_csv <- file.path(ex_loc, "sample_points_attributes.csv")
 #' ihydro::fasttrib_points(
-#'  input = output_gpkg,
+#'  input = ihydro::as_ihydro(output_gpkg),
 #'  out_filename = output_csv,
-#'  loi_file = output_filename_loi,
+#'  loi_file = ihydro::as_ihydro(output_filename_loi),
 #'  loi_cols = NULL,
 #'  iDW_file = NULL,
 #'  store_iDW = FALSE,
@@ -159,35 +162,35 @@
 #'  loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
 #'  inv_function = function(x) (x * 0.001 + 1)^-1,
 #'  temp_dir = NULL,
-#'  verbose = TRUE,
-#'  backend = c("tibble", "SQLite", "data.table"),
-#'  SQLdb_path = ":memory:"
+#'  verbose = TRUE
 #' )
 #'
 #'
 #' }
 #'
 
-fasttrib_points <- function(
-  input,
-  out_filename,
-  loi_file = NULL,
-  loi_cols = NULL,
-  iDW_file = NULL,
-  store_iDW = FALSE,
-  sample_points = NULL,
-  link_id = NULL,
-  target_o_type = c("point", "segment_point", "segment_whole"),
-  weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"),
-  loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
-  inv_function = function(x) (x * 0.001 + 1)^-1,
-  write_strategy = c("sequential", "batched"),
-  temp_dir = NULL,
-  verbose = FALSE
+fasttrib_points_old <- function(
+    input,
+    out_filename,
+    loi_file = NULL,
+    loi_cols = NULL,
+    iDW_file = NULL,
+    store_iDW = FALSE,
+    sample_points = NULL,
+    link_id = NULL,
+    target_o_type = c("point", "segment_point", "segment_whole"),
+    weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"),
+    loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
+    inv_function = function(x) (x * 0.001 + 1)^-1,
+    write_strategy = c("sequential", "batched"),
+    max_split = 100L,
+    temp_dir = NULL,
+    verbose = FALSE
 ) {
   # ─ Validate inputs ───────────────────────────
-  .check_ihydro(input)
+  check_ihydro(input)
   stopifnot(is.logical(store_iDW), length(store_iDW) == 1L)
+  stopifnot(is.numeric(max_split))
 
   target_o_type <- match.arg(target_o_type)
   weighting_scheme <- match.arg(weighting_scheme, several.ok = TRUE)
@@ -196,8 +199,8 @@ fasttrib_points <- function(
   write_strategy <- match.arg(write_strategy)
 
   input_path <- input$outfile
-  temp_dir <- .ensure_temp_dir(temp_dir)
-  n_cores <- .n_workers()
+  temp_dir <- ensure_temp_dir(temp_dir)
+  n_cores <- n_workers()
 
   # ─ Configure external tools ───────────────────────
   whitebox::wbt_options(
@@ -205,15 +208,19 @@ fasttrib_points <- function(
     verbose = verbose > 2,
     wd = temp_dir
   )
-  old_terra <- .set_terra_opts(temp_dir = temp_dir, verbose = verbose > 3)
-  on.exit(.restore_terra_opts(old_terra), add = TRUE)
+  # old_terra_opts <- set_terra_options(
+  #   n_cores = n_cores,
+  #   temp_dir = temp_dir,
+  #   verbose = verbose > 3
+  # )
+  # on.exit(restore_terra_options(old_terra_opts), add = TRUE)
 
-  old_opts <- options(
-    scipen = 999,
-    dplyr.summarise.inform = FALSE,
-    future.rng.onMisuse = "ignore"
-  )
-  on.exit(options(old_opts), add = TRUE)
+  # old_opts <- options(
+  #   scipen = 999,
+  #   dplyr.summarise.inform = FALSE,
+  #   future.rng.onMisuse = "ignore"
+  # )
+  # on.exit(options(old_opts), add = TRUE)
 
   # ─ Resolve LOI file ──────────────────────────
   loi_file <- .resolve_loi(input, loi_file)
@@ -261,8 +268,8 @@ fasttrib_points <- function(
         )
         if (
           !is.null(stored_meta) &&
-            "target_o_type" %in% colnames(stored_meta) &&
-            nrow(stored_meta) > 0L
+          "target_o_type" %in% colnames(stored_meta) &&
+          nrow(stored_meta) > 0L
         ) {
           stored_types <- unique(stored_meta$target_o_type)
           if (!target_o_type %in% stored_types) {
@@ -307,41 +314,17 @@ fasttrib_points <- function(
   }
 
   # ─ Build subbasin lookup ────────────────────────
-  subb_ids <- ihydro::read_ihydro(input, "us_flowpaths") |>
-    dplyr::filter(pour_point_id %in% local(target_ids$link_id)) |>
-    dplyr::select(pour_point_id, origin_link_id) |>
-    dplyr::distinct() |>
-    dplyr::collect() |>
+  site_id_col <- ihydro::read_ihydro(input, "site_id_col")[[1]]
+
+  subb_ids <- ihydro::read_ihydro(input, "stream_links_attr") |>
+    dplyr::filter(link_lngth > 0) |> # small catchments without streams
+    dplyr::select(link_id, tidyselect::any_of(site_id_col), USChnLn_To) |>
     dplyr::left_join(
       dplyr::mutate(target_o_meta, link_id = as.character(link_id)),
-      by = c("pour_point_id" = "link_id")
-    ) |>
-    dplyr::arrange(origin_link_id)
+      by = c("link_id")
+    )
 
-  # ─ Pre-compute catchment polygons (main process only) ──────────
-  # get_catchment() opens SQLite connections and writes cached results,
-
-  # so it must NOT run inside parallel workers.
-  if (verbose) {
-    message("Pre-computing catchment polygons")
-  }
-  all_link_ids <- unique(subb_ids$pour_point_id)
-  catchment_polys <- tryCatch(
-    get_catchment(
-      input,
-      link_id = all_link_ids,
-      temp_dir = temp_dir,
-      verbose = verbose
-    ),
-    error = function(cnd) {
-      cli::cli_warn("get_catchment failed: {conditionMessage(cnd)}")
-      sf::st_sf(
-        link_id = character(0),
-        geom = sf::st_sfc(),
-        crs = sf::st_crs(4326)
-      )
-    }
-  )
+  subb_ids <- subb_ids[!is.na(subb_ids$unn_group), ]
 
   # ─ Extract raster attributes ──────────────────────
   temp_dir_sub <- file.path(temp_dir, basename(tempfile()))
@@ -351,7 +334,6 @@ fasttrib_points <- function(
   }
 
   o1 <- .ft_extract_all(
-    catchment_polys = catchment_polys,
     iDW_path = iDW_path,
     loi_path = loi_path,
     weighting_scheme = weighting_scheme,
@@ -361,8 +343,48 @@ fasttrib_points <- function(
     subb_ids = subb_ids,
     temp_dir_sub = temp_dir_sub,
     verbose = verbose,
+    max_split = max_split,
     n_cores = n_cores
   )
+
+  # If any catchments remain incomplete, fall back to attrib_points()
+  incomplete <- o1$link_id[o1$status == "Incomplete"]
+  if (length(incomplete) > 0L) {
+    if (verbose) {
+      cli::cli_warn(c(
+        "!" = "Attribute extraction failed for {.val {length(incomplete)}} link_id(s).",
+        "i" = "This may be due to memory constraints during raster extraction.",
+        "i" = "Falling back to the slower but more memory-efficient attrib_points() for these link_id(s)."
+      ))
+    }
+
+    temp_dir_fallback <- file.path(temp_dir, "fallback.csv")
+
+    attrib_fallback <- attrib_points(
+      input = input,
+      out_filename = temp_dir_fallback,
+      loi_file = loi_file,
+      loi_cols = loi_cols,
+      sample_points = NULL,
+      link_id = as.character(incomplete),
+      target_o_type = target_o_type,
+      weighting_scheme = weighting_scheme,
+      loi_numeric_stats = loi_numeric_stats,
+      inv_function = inv_function,
+      temp_dir = temp_dir,
+      verbose = verbose
+    )
+
+    attrib_fallback <- dplyr::mutate(
+      attrib_fallback,
+      link_id = as.character(link_id),
+      status = "Complete"
+    )
+    o1 <- dplyr::bind_rows(
+      dplyr::filter(o1, status == "Complete"),
+      attrib_fallback
+    )
+  }
 
   # ─ Join results and write ────────────────────────
   target_ids_out <- target_id_fun(
@@ -375,8 +397,8 @@ fasttrib_points <- function(
 
   final_out <- dplyr::left_join(
     target_ids_out,
-    dplyr::mutate(o1, pour_point_id = as.character(pour_point_id)),
-    by = c("link_id" = "pour_point_id"),
+    dplyr::mutate(o1, link_id = as.character(link_id)),
+    by = c("link_id" = "link_id"),
     multiple = "all"
   )
 
@@ -397,61 +419,6 @@ fasttrib_points <- function(
 # ────────────────────────────────────────
 
 # ─ Input validation & setup ─────────────────────────
-
-#' @noRd
-.check_ihydro <- function(x) {
-  if (!inherits(x, "ihydro")) {
-    cli::cli_abort("{.arg input} must be of class {.cls ihydro}.")
-  }
-}
-
-#' @noRd
-.ensure_temp_dir <- function(temp_dir) {
-  if (is.null(temp_dir)) {
-    temp_dir <- tempfile()
-  }
-  if (!dir.exists(temp_dir)) {
-    dir.create(temp_dir, recursive = TRUE)
-  }
-  normalizePath(temp_dir)
-}
-
-#' @noRd
-.n_workers <- function() {
-  n <- future::nbrOfWorkers()
-  if (is.infinite(n)) {
-    n <- future::availableCores(logical = FALSE)
-  }
-  max(n, 1L)
-}
-
-#' Set terra options; return prior values for restoration
-#' @noRd
-.set_terra_opts <- function(temp_dir, verbose = FALSE) {
-  old <- list(
-    memfrac = terra::terraOptions(print = F)$memfrac,
-    memmin = terra::terraOptions(print = F)$memmin,
-    tempdir = terra::terraOptions(print = F)$tempdir,
-    verbose = terra::terraOptions(print = F)$verbose
-  )
-  terra::terraOptions(
-    memfrac = 0.8,
-    memmin = 1,
-    tempdir = temp_dir,
-    verbose = verbose
-  )
-  old
-}
-
-#' @noRd
-.restore_terra_opts <- function(old) {
-  terra::terraOptions(
-    memfrac = old$memfrac,
-    memmin = old$memmin,
-    tempdir = old$tempdir,
-    verbose = old$verbose
-  )
-}
 
 #' Resolve LOI file to an ihydro object
 #' @noRd
@@ -494,28 +461,44 @@ fasttrib_points <- function(
 #' Orchestrate parallel extraction across unnest groups
 #' @noRd
 .ft_extract_all <- function(
-  catchment_polys,
-  iDW_path,
-  loi_path,
-  weighting_scheme,
-  loi_numeric_stats,
-  loi_cols,
-  loi_meta,
-  subb_ids,
-  temp_dir_sub,
-  verbose,
-  n_cores
+    iDW_path,
+    loi_path,
+    weighting_scheme,
+    loi_numeric_stats,
+    loi_cols,
+    loi_meta,
+    subb_ids,
+    temp_dir_sub,
+    verbose,
+    max_split = 100L,
+    n_cores
 ) {
   # One task per unnest-group
-  tasks <- subb_ids |>
-    dplyr::group_by(unn_group) |>
-    tidyr::nest() |>
-    dplyr::ungroup()
+  tasks <- task_helper(subb_ids, max_split)
 
+  # ─ Pre-compute catchment polygons (main process only) ──────────
+  all_link_ids <- unique(subb_ids$link_id)
+  catchment_polys <- get_catchment(
+    input,
+    link_id = all_link_ids,
+    temp_dir = temp_dir,
+    verbose = verbose
+  )
+
+  catchments_gpkg <- file.path(temp_dir_sub, "catchments.gpkg")
+  sf::write_sf(
+    catchment_polys,
+    catchments_gpkg,
+    layer = "catchments",
+    delete_layer = TRUE
+  )
+
+  rm(catchment_polys)
+  gc(verbose = FALSE)
   # ─ First pass (parallel if workers > 1) ─────────────────
   out <- .ft_dispatch_tasks(
     tasks,
-    catchment_polys,
+    catchments_gpkg,
     iDW_path,
     loi_path,
     weighting_scheme,
@@ -529,14 +512,14 @@ fasttrib_points <- function(
   )
 
   # ─ Sequential retry for failures ────────────────────
-  incomplete <- out$pour_point_id[out$status == "Incomplete"]
+  incomplete <- out$link_id[out$status == "Incomplete"]
   if (length(incomplete) > 0L && n_cores > 1L) {
     if (verbose) {
       message("Retrying ", length(incomplete), " link_id(s) sequentially.")
     }
     retry_tasks <- subb_ids |>
-      dplyr::filter(pour_point_id %in% incomplete) |>
-      dplyr::group_by(unn_group) |>
+      dplyr::filter(link_id %in% incomplete) |>
+      dplyr::group_by(link_id) |>
       tidyr::nest() |>
       dplyr::ungroup()
 
@@ -556,7 +539,7 @@ fasttrib_points <- function(
     )
 
     out <- dplyr::bind_rows(
-      dplyr::filter(out, !pour_point_id %in% incomplete),
+      dplyr::filter(out, !link_id %in% incomplete),
       out_retry
     )
   }
@@ -574,40 +557,42 @@ fasttrib_points <- function(
 #'
 #' @noRd
 .ft_dispatch_tasks <- function(
-  tasks,
-  catchment_polys,
-  iDW_path,
-  loi_path,
-  weighting_scheme,
-  loi_numeric_stats,
-  loi_cols,
-  loi_meta,
-  temp_dir_sub,
-  verbose,
-  n_cores,
-  parallel = TRUE
+    tasks,
+    catchment_polys_path,
+    iDW_path,
+    loi_path,
+    weighting_scheme,
+    loi_numeric_stats,
+    loi_cols,
+    loi_meta,
+    temp_dir_sub,
+    verbose,
+    n_cores,
+    parallel = TRUE
 ) {
   # Build a self-contained worker using carrier::crate.
   # crate captures only explicitly-listed values, preventing the
   # entire parent environment from being serialised to workers.
   worker <- carrier::crate(
     function(
-      task_data,
-      unn_group,
-      catchment_polys,
-      iDW_path,
-      loi_path,
-      loi_meta,
-      weighting_scheme,
-      loi_numeric_stats,
-      loi_cols,
-      temp_dir_sub,
-      verbose
+    task_data,
+    unn_group,
+    catchment_polys_path,
+    iDW_path,
+    loi_path,
+    loi_meta,
+    weighting_scheme,
+    loi_numeric_stats,
+    loi_cols,
+    temp_dir_sub,
+    verbose,
+    progressor,
+    n_cores
     ) {
       ihydro:::.ft_process_group(
         task_data = task_data,
         unn_group = unn_group,
-        catchment_polys = catchment_polys,
+        catchment_polys_path = catchment_polys_path,
         iDW_path = iDW_path,
         loi_path = loi_path,
         loi_meta = loi_meta,
@@ -615,7 +600,9 @@ fasttrib_points <- function(
         loi_numeric_stats = loi_numeric_stats,
         loi_cols = loi_cols,
         temp_dir_sub = temp_dir_sub,
-        verbose = verbose
+        verbose = verbose,
+        progressor = progressor,
+        n_cores = n_cores
       )
     }
   )
@@ -623,7 +610,7 @@ fasttrib_points <- function(
   args <- list(
     task_data = tasks$data,
     unn_group = tasks$unn_group,
-    catchment_polys = list(catchment_polys),
+    catchment_polys_path = list(catchment_polys_path),
     iDW_path = list(iDW_path),
     loi_path = list(loi_path),
     loi_meta = list(loi_meta),
@@ -631,22 +618,96 @@ fasttrib_points <- function(
     loi_numeric_stats = list(loi_numeric_stats),
     loi_cols = list(loi_cols),
     temp_dir_sub = list(temp_dir_sub),
-    verbose = list(verbose)
+    verbose = list(verbose),
+    n_cores = list(n_cores)
   )
 
-  if (parallel) {
-    results <- furrr::future_pmap(
-      args,
-      worker,
-      .options = furrr::furrr_options(
-        globals = FALSE,
-        seed = NULL,
-        scheduling = 1L # feed one task at a time to free workers
-      )
-    )
-  } else {
-    results <- purrr::pmap(args, worker)
-  }
+  progressr::with_progress({
+    total_tasks <- sum(purrr::map_int(tasks$data, nrow))
+    p <- progressr::progressor(steps = total_tasks)
+
+    args <- c(args, list(progressor = list(p)))
+
+    if (parallel) {
+      #results <- furrr::future_pmap(
+      #  args,
+      #  worker,
+      #  .options = furrr::furrr_options(
+      #    globals = FALSE,
+      #    seed = NULL,
+      #    scheduling = 4L
+      #  )
+      #)
+      futures <- vector("list", length = nrow(tasks))
+      for (i in seq_len(nrow(tasks))) {
+        futures[[i]] <- future::future(
+          {
+            worker(
+              task_data = tasks$data[[i]],
+              unn_group = tasks$unn_group[[i]],
+              catchment_polys_path = catchment_polys_path,
+              iDW_path = iDW_path,
+              loi_path = loi_path,
+              loi_meta = loi_meta,
+              weighting_scheme = weighting_scheme,
+              loi_numeric_stats = loi_numeric_stats,
+              loi_cols = loi_cols,
+              temp_dir_sub = temp_dir_sub,
+              verbose = verbose,
+              progressor = NULL,
+              n_cores = n_cores
+            )
+          },
+          globals = c(
+            "worker",
+            "tasks",
+            "catchment_polys_path",
+            "iDW_path",
+            "loi_path",
+            "loi_meta",
+            "weighting_scheme",
+            "loi_numeric_stats",
+            "loi_cols",
+            "temp_dir_sub",
+            "verbose",
+            "n_cores",
+            "i"
+          )
+        )
+      }
+      results <- vector("list", length = length(futures))
+
+      repeat {
+        for (i in seq_along(futures)) {
+          if (is.null(results[[i]]) && future::resolved(futures[[i]])) {
+            results[[i]] <- tryCatch(
+              future::value(futures[[i]]),
+              error = function(e) {
+                tibble::tibble(
+                  link_id = tasks$data[[i]]$link_id,
+                  status = "Incomplete"
+                )
+              }
+            )
+          }
+        }
+        if (all(!sapply(results, is.null))) {
+          break
+        }
+        Sys.sleep(0.1) # avoid busy waiting
+      }
+      # results <- purrr::map2(futures, tasks$data, function(fut, data) {
+      #   tryCatch(
+      #     future::value(fut),
+      #     error = function(e) {
+      #       tibble::tibble(link_id = data$link_id, status = "Incomplete")
+      #     }
+      #   )
+      # })
+    } else {
+      results <- purrr::pmap(args, worker)
+    }
+  })
 
   dplyr::bind_rows(results)
 }
@@ -655,25 +716,26 @@ fasttrib_points <- function(
 #' Process one unnest-group: load rasters, iterate over catchments
 #' @noRd
 .ft_process_group <- function(
-  task_data,
-  unn_group,
-  catchment_polys,
-  iDW_path,
-  loi_path,
-  loi_meta,
-  weighting_scheme,
-  loi_numeric_stats,
-  loi_cols,
-  temp_dir_sub,
-  verbose
+    task_data,
+    unn_group,
+    catchment_polys_path,
+    iDW_path,
+    loi_path,
+    loi_meta,
+    weighting_scheme,
+    loi_numeric_stats,
+    loi_cols,
+    temp_dir_sub,
+    verbose,
+    progressor = NULL,
+    n_cores = 1L
 ) {
-  # Configure terra inside worker
-  terra::terraOptions(
-    memfrac = 0.8,
-    memmin = 1,
-    tempdir = temp_dir_sub,
-    verbose = FALSE
+  old_terra_opts <- set_terra_options(
+    n_cores = n_cores,
+    temp_dir = temp_dir_sub,
+    verbose = verbose > 3
   )
+  on.exit(restore_terra_options(old_terra_opts), add = TRUE)
 
   # Load LOI rasters
   loi_rasts <- terra::rast(loi_path, loi_cols)
@@ -702,14 +764,28 @@ fasttrib_points <- function(
   input_rasts <- c(loi_rasts, iDWs_rasts, iDWo_rasts)
 
   # Subset pre-computed catchments for this group's pour points
-  group_ids <- unique(task_data$pour_point_id)
-  input_poly <- catchment_polys[catchment_polys$link_id %in% group_ids, ]
+  group_ids <- unique(task_data$link_id)
+  if (length(group_ids) == 0L) {
+    return(tibble::tibble(link_id = character(0), status = "Incomplete"))
+  }
+  sql <- paste0(
+    "SELECT * FROM catchments WHERE link_id IN (",
+    paste0(shQuote(as.character(group_ids)), collapse = ","),
+    ")"
+  )
+  input_poly <- tryCatch(
+    sf::read_sf(dsn = catchment_polys_path, query = sql),
+    error = function(e) {
+      sf::st_sf(
+        link_id = character(0),
+        geom = sf::st_sfc(),
+        crs = sf::st_crs(4326)
+      )
+    }
+  )
 
   if (nrow(input_poly) == 0L) {
-    return(tibble::tibble(
-      pour_point_id = group_ids,
-      status = "Incomplete"
-    ))
+    return(tibble::tibble(link_id = group_ids, status = "Incomplete"))
   }
 
   # Process each catchment
@@ -722,8 +798,11 @@ fasttrib_points <- function(
       weighting_scheme = weighting_scheme,
       loi_meta = loi_meta,
       loi_numeric_stats = loi_numeric_stats,
-      temp_dir_sub = temp_dir_sub
+      temp_dir_sub = temp_dir_sub,
+      n_cores = n_cores
     )
+
+    if (!is.null(progressor)) progressor()
   }
 
   dplyr::bind_rows(results)
@@ -733,68 +812,95 @@ fasttrib_points <- function(
 #' Extract and summarise raster data for one catchment polygon
 #' @noRd
 .ft_one_catchment <- function(
-  sub_poly,
-  input_rasts,
-  loi_cols,
-  weighting_scheme,
-  loi_meta,
-  loi_numeric_stats,
-  temp_dir_sub
+    sub_poly,
+    input_rasts,
+    loi_cols,
+    weighting_scheme,
+    loi_meta,
+    loi_numeric_stats,
+    temp_dir_sub,
+    n_cores = 1L
 ) {
   sub_id <- sub_poly$link_id
-  temp_fl <- tempfile(
-    pattern = "ihydro",
-    tmpdir = temp_dir_sub,
-    fileext = ".tif"
-  )
-  on.exit(try(file.remove(temp_fl), silent = TRUE), add = TRUE)
+  # temp_fl <- tempfile(
+  #   pattern = "ihydro",
+  #   tmpdir = temp_dir_sub,
+  #   fileext = ".tif"
+  # )
+  # on.exit(
+  #   try(suppressWarnings(file.remove(temp_fl)), silent = TRUE),
+  #   add = TRUE
+  # )
 
   # Rasterize catchment to get cell indices
-  sub_rast <- tryCatch(
-    terra::rasterize(
-      terra::vect(sub_poly),
-      input_rasts[[1]],
-      fun = sum,
-      field = 1,
-      filename = temp_fl
-    ),
-    error = function(cnd) NULL
-  )
-  if (is.null(sub_rast)) {
-    return(tibble::tibble(pour_point_id = sub_id, status = "Incomplete"))
-  }
-  cells <- terra::cells(sub_rast)
+  #  sub_rast <- tryCatch(
+  #    terra::rasterize(
+  #      terra::vect(sub_poly),
+  #      input_rasts[[1]],
+  #      fun = sum,
+  #      field = 1,
+  #      filename = temp_fl
+  #    ),
+  #    error = function(cnd) NULL
+  #  )
+  # if (is.null(sub_rast)) {
+  #  return(tibble::tibble(link_id = sub_id, status = "Incomplete"))
+  # }
+  cells <- terra::cells(
+    input_rasts[[1]],
+    terra::vect(sub_poly)
+  )[, "cell"]
+
   if (length(cells) == 0L) {
-    return(tibble::tibble(pour_point_id = sub_id, status = "Incomplete"))
+    return(tibble::tibble(link_id = sub_id, status = "Incomplete"))
   }
 
   # Full extraction with memory-error fallback
+  #tryCatch(
+  #  .ft_extract_and_summarise(
+  #    input_rasts,
+  #    cells,
+  #    sub_id,
+  #    loi_cols,
+  #    weighting_scheme,
+  #    loi_meta,
+  #    loi_numeric_stats
+  #  ),
+  #  error = function(cnd) {
+  #    # Retry with chunked extraction
+  #    tryCatch(
+  #      .ft_chunked_extract(
+  #        input_rasts,
+  #        cells,
+  #        sub_id,
+  #        loi_cols,
+  #        weighting_scheme,
+  #        loi_meta,
+  #        loi_numeric_stats,
+  #        n_cores
+  #      ),
+  #      error = function(cnd2) {
+  #        tibble::tibble(link_id = sub_id, status = "Incomplete")
+  #      }
+  #    )
+  #  }
+  #)
+
   tryCatch(
-    .ft_extract_and_summarise(
-      input_rasts,
-      cells,
-      sub_id,
-      loi_cols,
-      weighting_scheme,
-      loi_meta,
-      loi_numeric_stats
-    ),
-    error = function(cnd) {
-      # Retry with chunked extraction
-      tryCatch(
-        .ft_chunked_extract(
-          input_rasts,
-          cells,
-          sub_id,
-          loi_cols,
-          weighting_scheme,
-          loi_meta,
-          loi_numeric_stats
-        ),
-        error = function(cnd2) {
-          tibble::tibble(pour_point_id = sub_id, status = "Incomplete")
-        }
+    {
+      ihydro:::.ft_chunked_extract(
+        input_rasts,
+        cells,
+        sub_id,
+        loi_cols,
+        weighting_scheme,
+        loi_meta,
+        loi_numeric_stats,
+        n_cores
       )
+    },
+    error = function(cnd2) {
+      tibble::tibble(link_id = sub_id, status = "Incomplete")
     }
   )
 }
@@ -802,52 +908,120 @@ fasttrib_points <- function(
 
 #' Full extraction: all rasters at once
 #' @noRd
-.ft_extract_and_summarise <- function(
-  input_rasts,
-  cells,
-  point_id,
-  loi_cols,
-  weighting_scheme,
-  loi_meta,
-  loi_numeric_stats
-) {
-  ot <- terra::extract(input_rasts, cells)
-  .ft_attr(
-    df = ot,
-    point_id = point_id,
-    weighting_scheme = weighting_scheme,
-    loi_meta = loi_meta,
-    loi_cols = loi_cols,
-    loi_numeric_stats = loi_numeric_stats
-  )
+# .ft_extract_and_summarise <- function(
+    #   input_rasts,
+#   cells,
+#   point_id,
+#   loi_cols,
+#   weighting_scheme,
+#   loi_meta,
+#   loi_numeric_stats
+# ) {
+#   ot <- tryCatch(
+#     terra::extract(input_rasts, cells),
+#     error = function(x) NULL
+#   )
+#
+#   if (is.null(ot)) {
+#     cli::cli_abort("terra::extract error in .ft_extract_and_summarise")
+#   }
+#
+#   out <- .ft_attr(
+#     df = ot,
+#     point_id = point_id,
+#     weighting_scheme = weighting_scheme,
+#     loi_meta = loi_meta,
+#     loi_cols = loi_cols,
+#     loi_numeric_stats = loi_numeric_stats
+#   )
+#
+#   rm(ot)
+#   gc(verbose = FALSE)
+#
+#   return(out)
+# }
+
+task_helper <- function(subb_ids, max_split) {
+  subb_ids |>
+    dplyr::arrange(dplyr::desc(USChnLn_To)) |>
+    dplyr::group_by(unn_group) |>
+    dplyr::mutate(
+      group_ind = dplyr::cur_group_id(),
+      group_ind_mod = as.character(group_ind)
+    ) |>
+    dplyr::group_by(group_ind) |>
+    dplyr::mutate(group_ind_mod = split_helper(group_ind_mod, max_split)) %>%
+    dplyr::group_by(group_ind_mod, unn_group) |>
+    tidyr::nest() |>
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      n_catch = purrr::map_dbl(data, nrow),
+      tot_size = purrr::map_dbl(data, ~ sum(.x$USChnLn_To)),
+      max_size = purrr::map_dbl(data, ~ max(.x$USChnLn_To)),
+      avg_size = tot_size / n_catch
+    ) |>
+    dplyr::arrange(dplyr::desc(max_size))
 }
 
+#' Helper to split large unnest groups into smaller chunks for extraction
+#' @noRd
+split_helper <- function(x, max_split) {
+  x_split <- split(seq_along(x), ceiling(seq_along(x) / max_split))
+  ids <- sapply(1:length(x_split), function(x) ihydro:::rand_id())
+  x_split <- lapply(x_split, length)
+  rep(ids, length.out = length(x))
+}
 
 #' Chunked extraction: IDW first, then LOI in safe-sized chunks
 #' @noRd
 .ft_chunked_extract <- function(
-  input_rasts,
-  cells,
-  point_id,
-  loi_cols,
-  weighting_scheme,
-  loi_meta,
-  loi_numeric_stats
+    input_rasts,
+    cells,
+    point_id,
+    loi_cols,
+    weighting_scheme,
+    loi_meta,
+    loi_numeric_stats,
+    n_cores = 1L
 ) {
   ws_nonlumped <- weighting_scheme[weighting_scheme != "lumped"]
 
   if (length(ws_nonlumped) > 0L && any(ws_nonlumped %in% names(input_rasts))) {
     idw_names <- intersect(ws_nonlumped, names(input_rasts))
-    ot_idw <- terra::extract(terra::subset(input_rasts, idw_names), cells)
+    ot_idw <- tryCatch(
+      {
+        terra::extract(
+          terra::subset(input_rasts, idw_names),
+          cells
+        )
+      },
+      error = function(x) NULL
+    )
+    if (is.null(ot_idw)) {
+      return(tibble::tibble(link_id = point_id, status = "Incomplete"))
+    }
+
     if (ncol(ot_idw) == 1L) colnames(ot_idw) <- idw_names
   } else {
     ot_idw <- data.frame(lumped = 1)
   }
 
-  # Estimate chunk size from free RAM
-  bytes_per_col <- length(cells) * 8L
-  free_bytes <- as.numeric(terra::free_RAM()) * 1024
-  max_cols <- max(floor((free_bytes * 0.4) / bytes_per_col), 1L)
+  # Estimate chunk size
+  bytes_per_col <- object.size(cells) * 1.1 # add 10% overhead
+  max_mem <- .avail_mem(n_cores, 0.5, 2.5)
+  mem_for_idw <- object.size(ot_idw)
+  mem_for_loi <- length(loi_cols) * bytes_per_col
+  max_mem <- max_mem - mem_for_idw - mem_for_loi
+  if (max_mem <= 0) {
+    return(tibble::tibble(link_id = point_id, status = "Incomplete"))
+  }
+
+  max_cols <- max(
+    floor(
+      (max_mem / (bytes_per_col * 3)) * 0.9 # *3 to allow for multiplication in weighted stats and 0.9 to be conservative
+    ),
+    1L
+  )
   chunk_size <- min(max_cols, length(loi_cols))
   loi_chunks <- split(loi_cols, ceiling(seq_along(loi_cols) / chunk_size))
 
@@ -856,35 +1030,59 @@ fasttrib_points <- function(
     if (length(avail) == 0L) {
       return(NULL)
     }
-    ot_loi <- terra::extract(terra::subset(input_rasts, avail), cells)
+
+    ot_loi <- tryCatch(
+      terra::extract(terra::subset(input_rasts, avail), cells),
+      error = function(x) NULL
+    )
+    if (is.null(ot_loi)) {
+      return(tibble::tibble(link_id = point_id, status = "Incomplete"))
+    }
+
     if (ncol(ot_loi) == 1L) {
       colnames(ot_loi) <- avail
     }
 
-    .ft_attr(
-      df = dplyr::bind_cols(ot_loi, ot_idw),
-      point_id = point_id,
-      weighting_scheme = weighting_scheme,
-      loi_meta = loi_meta,
-      loi_cols = chunk,
-      loi_numeric_stats = loi_numeric_stats
+    out <- tryCatch(
+      {
+        ihydro:::.ft_attr(
+          df = dplyr::bind_cols(ot_loi, ot_idw),
+          point_id = point_id,
+          weighting_scheme = weighting_scheme,
+          loi_meta = loi_meta,
+          loi_cols = chunk,
+          loi_numeric_stats = loi_numeric_stats
+        )
+      },
+      error = function(x) NULL
     )
+
+    rm(ot_loi)
+    rm(cells)
+    rm(input_rasts)
+    gc(verbose = FALSE)
+
+    if (is.null(out)) {
+      return(tibble::tibble(link_id = point_id, status = "Incomplete"))
+    }
+
+    return(out)
   })
 
   chunk_results <- Filter(Negate(is.null), chunk_results)
   if (length(chunk_results) == 0L) {
-    return(tibble::tibble(pour_point_id = point_id, status = "Incomplete"))
+    return(tibble::tibble(link_id = point_id, status = "Incomplete"))
   }
   purrr::reduce(
     chunk_results,
     dplyr::left_join,
-    by = c("pour_point_id", "status")
+    by = c("link_id", "status")
   )
 }
 
 
 # ────────────────────────────────────────
-# Attribute computation (data.table backend only via dtplyr)
+# Attribute computation
 # ────────────────────────────────────────
 
 #' Compute weighted and lumped summary statistics
@@ -894,13 +1092,16 @@ fasttrib_points <- function(
 #'
 #' @noRd
 .ft_attr <- function(
-  df,
-  point_id,
-  weighting_scheme,
-  loi_meta,
-  loi_cols,
-  loi_numeric_stats
+    df,
+    point_id,
+    weighting_scheme,
+    loi_meta,
+    loi_cols,
+    loi_numeric_stats
 ) {
+  old_threads <- data.table::getDTthreads(FALSE)
+  on.exit(data.table::setDTthreads(threads = old_threads), add = TRUE)
+  data.table::setDTthreads(threads = 1)
   stopifnot(is.data.frame(df))
 
   # NaN -> NA
@@ -909,6 +1110,13 @@ fasttrib_points <- function(
     x[is.nan(x)] <- NA_real_
     x
   })
+
+  df <- df |>
+    dplyr::group_by(
+      dplyr::across(
+        tidyselect::any_of("link_id")
+      )
+    )
 
   loi_meta <- dplyr::filter(
     loi_meta,
@@ -922,24 +1130,6 @@ fasttrib_points <- function(
   numb_rast <- loi_meta$loi_var_nms[loi_meta$loi_type == "num_rast"]
   cat_rast <- loi_meta$loi_var_nms[loi_meta$loi_type == "cat_rast"]
 
-  # dtplyr lazy data.table
-
-  dt <- dtplyr::lazy_dt(df)
-
-  # Pre-compute weighted columns: loi * weight
-  for (ws in intersect(
-    c("iFLS", "iFLO", "HAiFLS", "HAiFLO"),
-    weighting_scheme
-  )) {
-    dt <- dt |>
-      dplyr::mutate(dplyr::across(
-        tidyselect::any_of(loi_cols),
-        ~ . * (!!rlang::sym(ws)),
-        .names = paste0("{.col}_", ws)
-      ))
-  }
-  dt <- dplyr::compute(dt)
-
   # ─ Collect results ───────────────────────────
   results <- list()
 
@@ -947,37 +1137,60 @@ fasttrib_points <- function(
   if ("lumped" %in% weighting_scheme) {
     results <- c(
       results,
-      .ft_lumped_stats(dt, numb_rast, cat_rast, loi_cols, loi_numeric_stats)
+      .ft_lumped_stats(df, numb_rast, cat_rast, loi_cols, loi_numeric_stats)
     )
   }
 
   # Weighted mean / proportions
   ws_active <- weighting_scheme[weighting_scheme != "lumped"]
-  if (
-    length(ws_active) > 0L &&
-      (any(loi_numeric_stats == "mean") || length(cat_rast) > 0L)
-  ) {
-    results <- c(results, list(.ft_weighted_mean(dt, numb_rast, cat_rast)))
-  }
 
-  # Weighted SD
-  if (
-    length(ws_active) > 0L &&
+  # Compute weighted columns: loi * weight and calculate stats for each weighting scheme separately to manage memory
+  for (ws in intersect(
+    c("iFLS", "iFLO", "HAiFLS", "HAiFLO"),
+    weighting_scheme
+  )) {
+    df <- df |>
+      dplyr::mutate(dplyr::across(
+        tidyselect::any_of(loi_cols),
+        ~ . * (!!rlang::sym(ws)),
+        .names = paste0("{.col}_", ws)
+      ))
+
+    df <- dplyr::compute(df)
+
+    if (
+      length(ws_active) > 0L &&
+      (any(loi_numeric_stats == "mean") || length(cat_rast) > 0L)
+    ) {
+      results <- c(results, list(.ft_weighted_mean(df, numb_rast, cat_rast)))
+    }
+
+    # Weighted SD
+    if (
+      length(ws_active) > 0L &&
       any(loi_numeric_stats %in% c("sd", "stdev")) &&
       length(numb_rast) > 0L
-  ) {
-    results <- c(results, list(.ft_weighted_sd(dt, numb_rast, ws_active)))
+    ) {
+      results <- c(results, list(.ft_weighted_sd(df, numb_rast, ws_active)))
+    }
+
+    df <- df |>
+      dplyr::select(-tidyselect::ends_with(paste0("_", ws))) |>
+      dplyr::compute()
   }
 
-  # Assemble
+  # Assemble results for this catchment
   results <- Filter(function(x) !is.null(x) && nrow(x) > 0L, results)
 
+  rm(df)
+  gc(verbose = FALSE)
+
   dplyr::bind_cols(
-    tibble::tibble(pour_point_id = point_id, status = "Complete"),
+    tibble::tibble(link_id = point_id, status = "Complete"),
     results
   ) |>
     dplyr::select(
-      tidyselect::any_of("pour_point_id"),
+      tidyselect::any_of("link_id"),
       tidyselect::any_of("status"),
       tidyselect::contains(loi_meta$loi_var_nms)
     )
@@ -987,11 +1200,11 @@ fasttrib_points <- function(
 #' Lumped (unweighted) summary statistics
 #' @noRd
 .ft_lumped_stats <- function(
-  dt,
-  numb_rast,
-  cat_rast,
-  loi_cols,
-  loi_numeric_stats
+    dt,
+    numb_rast,
+    cat_rast,
+    loi_cols,
+    loi_numeric_stats
 ) {
   results <- list()
 
@@ -1149,14 +1362,14 @@ fasttrib_points <- function(
           tidyselect::any_of(numb_rast),
           ~ (!!sym_ws) *
             ((. -
-              (sum(. * (!!sym_ws), na.rm = TRUE) /
-                sum(!!sym_ws, na.rm = TRUE)))^2),
+                (sum(. * (!!sym_ws), na.rm = TRUE) /
+                   sum(!!sym_ws, na.rm = TRUE)))^2),
           .names = paste0("{.col}_", ws, "_term1")
         ),
         dplyr::across(
           tidyselect::any_of(numb_rast),
           ~ ((sum(!!sym_ws != 0, na.rm = TRUE) - 1) /
-            sum(!!sym_ws != 0, na.rm = TRUE)) *
+               sum(!!sym_ws != 0, na.rm = TRUE)) *
             sum(!!sym_ws, na.rm = TRUE),
           .names = paste0("{.col}_", ws, "_term2")
         )

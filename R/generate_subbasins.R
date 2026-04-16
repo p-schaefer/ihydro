@@ -48,10 +48,17 @@ generate_subbasins <- function(
     message("Converting subbasins to polygons")
   }
   subb_rast <- terra::rast(file.path(temp_dir, "Subbasins.tif"))
+  # subb_rast_cells <- subb_rast
+  # subb_rast_cells[] <- 1
+  # names(subb_rast_cells) <- "sum_nCells"
+  #
+  # subb_cells <- terra::zonal(subb_rast_cells, subb_rast, fun = "sum")
+
   subb <- subb_rast |>
     terra::as.polygons(dissolve = TRUE) |>
     sf::st_as_sf() |>
-    dplyr::mutate(sbbsn_area = sf::st_area(geometry))
+    dplyr::mutate(sbbsn_area = sf::st_area(geometry)) #|>
+  #dplyr::left_join(subb_cells, by = "Subbasins")
   names(subb)[1] <- "link_id"
 
   sf::write_sf(subb, file.path(temp_dir, "Subbasins_poly.shp"))
@@ -108,7 +115,7 @@ generate_subbasins <- function(
       dplyr::ungroup() |>
       dplyr::left_join(
         subb |>
-          dplyr::select(-sbbsn_area) |>
+          dplyr::select(-sbbsn_area) |> #, -sum_nCells
           tibble::as_tibble() |>
           dplyr::rename(subb_poly = geometry),
         by = c("link_id_base" = "link_id")
@@ -124,7 +131,11 @@ generate_subbasins <- function(
           temp_dir = rep(list(temp_dir), nrow(new_data)),
           p = rep(list(p), nrow(new_data))
         ),
-        .options = furrr::furrr_options(globals = FALSE, seed = NULL),
+        .options = furrr::furrr_options(
+          globals = FALSE,
+          seed = NULL,
+          scheduling = 4L
+        ),
         split_subbasin_worker
       )
     })
@@ -216,7 +227,7 @@ generate_subbasins <- function(
 split_subbasin_worker <- carrier::crate(
   function(data, link_id, subb_poly, temp_dir, p) {
     #suppressPackageStartupMessages(library(sf)) # Not sure why, but this is necessary
-    options(scipen = 999)
+    # options(scipen = 999)
     `%>%` <- magrittr::`%>%`
 
     # Single-point case: no splitting needed

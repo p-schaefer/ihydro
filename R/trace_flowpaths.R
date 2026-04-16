@@ -217,7 +217,11 @@ trace_flowpath_fn <- function(
       dplyr::mutate(
         join_id = furrr::future_map(
           data,
-          .options = furrr::furrr_options(globals = FALSE, seed = NULL),
+          .options = furrr::furrr_options(
+            globals = FALSE,
+            seed = NULL,
+            scheduling = 4L
+          ),
           carrier::crate(function(x) {
             options(scipen = 999)
             `%>%` <- magrittr::`%>%`
@@ -245,7 +249,11 @@ trace_flowpath_fn <- function(
         data2 = furrr::future_map2(
           data,
           p,
-          .options = furrr::furrr_options(globals = FALSE, seed = NULL),
+          .options = furrr::furrr_options(
+            globals = FALSE,
+            seed = NULL,
+            scheduling = 4L
+          ),
           carrier::crate(function(x, p) {
             options(scipen = 999)
             `%>%` <- magrittr::`%>%`
@@ -321,7 +329,11 @@ trace_flowpath_fn <- function(
         dplyr::mutate(
           ds_path = furrr::future_pmap(
             list(data = data, ds_path = ds_path, p = p),
-            .options = furrr::furrr_options(globals = FALSE, seed = NULL),
+            .options = furrr::furrr_options(
+              globals = FALSE,
+              seed = NULL,
+              scheduling = 4L
+            ),
             carrier::crate(function(data, ds_path, p) {
               options(scipen = 999)
               `%>%` <- magrittr::`%>%`

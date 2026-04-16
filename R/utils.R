@@ -1,6 +1,3 @@
-# Necessary temporarily: https://github.com/tidyverse/dtplyr/issues/398
-.datatable.aware <- TRUE
-
 # ── ihydro class ──────────────────────────────────────────────────────────────
 
 #' Create an ihydro object from a GeoPackage file
@@ -469,6 +466,7 @@ write_raster_gpkg <- function(
   invisible(NULL)
 }
 
+
 # ── Temp-directory helper ─────────────────────────────────────────────────────
 
 #' Ensure a temporary directory exists, return its normalised path
@@ -501,10 +499,10 @@ n_workers <- function() {
 #' Save current terraOptions and set per-worker memory limits
 #'
 #' Computes a safe per-worker memory cap based on total system RAM divided by
-#' `n_workers`, then calls `terra::terraOptions()` with `memmax` and `memfrac`.
+#' `n_cores`, then calls `terra::terraOptions()` with `memmax` and `memfrac`.
 #' Returns the previous options so they can be restored later.
 #'
-#' @param n_workers Integer. Number of parallel workers sharing the machine.
+#' @param n_cores Integer. Number of parallel workers sharing the machine.
 #' @param temp_dir Character. Directory for terra temporary files.
 #' @param verbose Logical. Forwarded to `terra::terraOptions(verbose = .)`.
 #' @param mem_fraction Numeric (0, 1]. Fraction of total RAM available to all
@@ -513,24 +511,28 @@ n_workers <- function() {
 #' @return A list of previous terraOptions, suitable for `restore_terra_options()`.
 #' @noRd
 set_terra_options <- function(
-  n_workers = 1L,
+  n_cores = 1L,
   temp_dir = tempdir(),
   verbose = FALSE,
-  mem_fraction = 0.8
+  mem_fraction = 0.5
 ) {
   old_opts <- terra::terraOptions(print = FALSE)
 
-  total_gb <- as.numeric(terra::free_RAM()) / 1024^2
-  per_worker_gb <- total_gb * mem_fraction / max(n_workers, 1L)
-  # Ensure at least a small floor so terra doesn't refuse to work
+  total_target_frac <- mem_fraction
+  per_worker_frac <- total_target_frac / max(1L, as.integer(n_cores))
+  per_worker_frac <- max(0.05, min(total_target_frac, per_worker_frac))
 
-  per_worker_gb <- max(per_worker_gb, 0.1)
+  max_mem <- .avail_mem(
+    n_cores = n_cores,
+    mem_fraction = per_worker_frac,
+    min_per_worker_gb = 2.5
+  )
 
   progress <- 0
 
   terra::terraOptions(
-    memmax = per_worker_gb,
-    memfrac = min(mem_fraction / max(n_workers, 1L), 0.9),
+    memmax = max_mem / 1024^3,
+    memfrac = per_worker_frac,
     tempdir = temp_dir,
     verbose = verbose,
     progress = progress
@@ -749,4 +751,51 @@ stop_on_future_errors <- function(
   )
 
   stop(paste(msgs, collapse = collapse), call. = FALSE)
+}
+
+# Calculate an appropriate per-worker memory limit based on total system RAM and number of workers
+#' @noRd
+.avail_mem <- function(
+  n_cores = 1L,
+  mem_fraction = 0.5,
+  min_per_worker_gb = 2.5
+) {
+  max_mem <- as.numeric(memuse::Sys.meminfo()$totalram) * mem_fraction
+  max_mem <- max_mem / max(1L, as.integer(n_cores))
+  max_mem <- max(min_per_worker_gb * 1024^3, max_mem) # enforce a minimum per-worker memory
+  return(max_mem)
+}
+
+#' Calculate a pooled weighted mean across multiple lists of values and weights
+#' @noRd
+combine_weighted_mean <- function(sub_mean, sub_wt) {
+  sum(sub_mean * sub_wt) / sum(sub_wt)
+}
+
+#' Calculate a pooled weighted variance across multiple lists of values, variances, and weights
+#' @noRd
+combine_weighted_var <- function(sub_mean, sub_var, sub_wt) {
+  M <- combine_weighted_mean(sub_mean, sub_wt)
+  sum(sub_wt * (sub_var + (sub_mean - M)^2)) / sum(sub_wt)
+}
+
+#' Calculate a pooled weighted standard deviation across multiple lists of values, variances, and weights
+#' @noRd
+combine_weighted_sd <- function(sub_mean, sub_var, sub_wt) {
+  sqrt(combine_weighted_var(sub_mean, sub_var, sub_wt))
+}
+
+#' Calculate a pooled weighted sample variance across multiple lists of values, variances, and weights
+#' @noRd
+combine_weighted_sample_var <- function(sub_mean, sub_var, sub_wt) {
+  M <- sum(sub_mean * sub_wt) / sum(sub_wt)
+  numerator <- sum((sub_wt - 1) * sub_var + sub_wt * (sub_mean - M)^2)
+  denominator <- sum(sub_wt) - 1
+  numerator / denominator
+}
+
+#' Calculate a pooled weighted sample standard deviation across multiple lists of values, variances, and weights
+#' @noRd
+combine_weighted_sample_sd <- function(sub_mean, sub_var, sub_wt) {
+  sqrt(combine_weighted_sample_var(sub_mean, sub_var, sub_wt))
 }

@@ -59,7 +59,8 @@ get_catchment <- function(
   sample_points = NULL,
   link_id = NULL,
   temp_dir = NULL,
-  verbose = FALSE
+  verbose = FALSE,
+  return = TRUE
 ) {
   check_ihydro(input)
   whitebox::wbt_options(exe_path = whitebox::wbt_exe_path(), verbose = FALSE)
@@ -103,6 +104,10 @@ get_catchment <- function(
 
   # If all already cached, return from gpkg
   if (nrow(still_needed) == 0) {
+    if (!return) {
+      return(invisible(NULL))
+    }
+
     return(sf::read_sf(
       db_fp,
       query = build_sql_in("Catchment_poly", "link_id", already_done$link_id)
@@ -121,10 +126,28 @@ get_catchment <- function(
       dplyr::mutate(
         catch = furrr::future_pmap(
           list(link_id = link_id, db_loc = db_loc, p = p),
-          .options = furrr::furrr_options(globals = FALSE, seed = NULL),
+          .options = furrr::furrr_options(
+            globals = FALSE,
+            seed = NULL,
+            scheduling = 4L
+          ),
           compute_single_catchment
         )
       )
+
+    # out <- out |>
+    #   dplyr::filter(!is.na(link_id)) |>
+    #   dplyr::select(catch) |>
+    #   tidyr::unnest(catch) |>
+    #   dplyr::filter(!is.na(link_id))
+    #
+    # out <- terra::vect(out)
+    #
+    # out <- lapply(1:nrow(out), function(x) terra::rasterize(out[x,],r,field = "link_id"))
+    # out <- lapply(out,function(x) terra::as.polygons(x))
+    #
+    # out <- sf::st_as_sf(out)
+    #
   })
 
   out <- out |>
@@ -159,6 +182,9 @@ get_catchment <- function(
     )
   }
 
+  if (!return) {
+    return(invisible(NULL))
+  }
   sf::st_as_sf(out)
 }
 
@@ -192,7 +218,7 @@ compute_single_catchment <- carrier::crate(
 
     out_geom <- s1 %>%
       dplyr::select(-link_id, link_id = pour_point_id) %>%
-      sf::st_buffer(units::as_units(0.01, sf::st_crs(s1)$units)) %>%
+      #sf::st_buffer(units::as_units(0.01, sf::st_crs(s1)$units)) %>%
       sf::st_union() %>%
       sfheaders::sf_remove_holes() %>%
       sf::st_cast("POLYGON")
