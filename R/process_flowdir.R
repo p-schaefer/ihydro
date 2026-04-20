@@ -11,6 +11,11 @@
 #' - with `burn_depth`, then the dem covered by the supplied stream lines is depressed
 #' into the landscape by `burn_depth` meters.
 #' - [whitebox::wbt_feature_preserving_smoothing] is applied
+#' - if `stream_keep_thresh` is provided, then the overlap between `burn_streams`
+#'  and `dem_streams_d8` is calculated and only stream segments >= `stream_keep_thresh`
+#'  will be kept in the final product (note that this option should only be specified
+#'  if the `burn_streams` is considered highly accurate, and is burned into the DEM
+#'  deeply enough that extracted streams closely align)
 #'
 #' `depression_corr` can apply
 #' filling [whitebox::wbt_fill_depressions()] or breaching
@@ -20,6 +25,8 @@
 #' @param threshold Integer. Flow accumulation threshold for stream initiation.
 #' @param burn_streams Optional stream layer to burn into the DEM.
 #' @param burn_depth Numeric burn depth in map elevation units (default `NULL`).
+#' @param stream_keep_thresh Numeric minimum proportion of overlap between `burn_streams`
+#' and stream segments extracted from DEM to keep in final stream layer (see details)
 #' @param burn_slope_dist Numeric burn slope width in meters (default `NULL`).
 #' @param burn_slope_depth Numeric burn slope depth in map elevation units (default `NULL`).
 #' @param min_length Numeric. Minimum tributary length in meters; shorter 1st-order
@@ -40,6 +47,7 @@
 #' - `dem_accum_d8`: D8 flow accumulation in number of upstream cells.
 #' - `dem_accum_d8_sca`: D8 flow accumulation in upstream contributing area (SCA).
 #' - `dem_streams_d8`: D8-derived stream raster based on the specified flow accumulation threshold.
+#' - `dem_streams_d8_sub`: Subset of dem_streams_d8 which meet minimum stream_keep_thresh.
 #' If `return_products` is `TRUE`, the returned `ihydro` object will also include the above rasters as `SpatRaster` objects for immediate use in R. Otherwise, only file paths are included and temporary files are cleaned up.
 #'
 #' @export
@@ -74,19 +82,22 @@
 #' }
 #'
 process_flowdir <- function(
-  dem,
-  threshold,
-  burn_streams = NULL,
-  burn_depth = NULL,
-  burn_slope_dist = NULL,
-  burn_slope_depth = NULL,
-  min_length = NULL,
-  depression_corr = c(NULL, "fill", "breach"),
-  output_filename,
-  return_products = FALSE,
-  temp_dir = NULL,
-  compress = FALSE,
-  verbose = FALSE
+    dem,
+    threshold,
+    burn_streams = NULL,
+    stream_keep_thresh = NULL,
+    stream_keep_burnbuff = 25,
+    stream_keep_dembuff = 1,
+    burn_depth = NULL,
+    burn_slope_dist = NULL,
+    burn_slope_depth = NULL,
+    min_length = NULL,
+    depression_corr = c(NULL, "fill", "breach"),
+    output_filename,
+    return_products = FALSE,
+    temp_dir = NULL,
+    compress = FALSE,
+    verbose = FALSE
 ) {
   # ── Validation ────────────────────────────────────────────────────────────
   if (!is.integer(threshold)) {
@@ -111,6 +122,15 @@ process_flowdir <- function(
     }
     if (!is.null(burn_slope_depth) && !is.numeric(burn_slope_depth)) {
       cli::cli_abort("{.arg burn_slope_depth} must be numeric.")
+    }
+    if (!is.null(stream_keep_thresh) && !is.numeric(stream_keep_thresh)) {
+      cli::cli_abort("{.arg stream_keep_thresh} must be numeric.")
+    }
+    if (!is.null(stream_keep_thresh) && (stream_keep_thresh <=0 |stream_keep_thresh > 1)) {
+      cli::cli_abort("{.arg stream_keep_thresh} must be > 0 and <= 1")
+    }
+    if (!is.null(stream_keep_thresh) && (!is.numeric(stream_keep_burnbuff) | !is.numeric(stream_keep_dembuff))) {
+      cli::cli_abort("{.arg stream_keep_burnbuff} and {.arg stream_keep_dembuff} must be numeric")
     }
   }
 
@@ -263,6 +283,93 @@ process_flowdir <- function(
     )
   }
 
+  # ── Only keep DEM streams that align with  burn_streams ─────────────────
+
+  if (is.null(stream_keep_thresh)) {
+    dem_streams_d8_sub <- terra::rast(file.path(temp_dir, "dem_streams_d8.tif"))
+    names(dem_streams_d8_sub) <- "dem_streams_d8_sub"
+
+    terra::writeRaster(
+      dem_streams_d8_sub,
+      file.path(temp_dir, "dem_streams_d8_sub.tif"),
+      overwrite = TRUE
+    )
+
+  } else {
+    if (verbose) {
+      message("Trimming DEM streams to match burn_streams")
+    }
+
+    ls <- sf::st_sfc(sf::st_linestring(rbind(c(0,0),c(0,1))))
+    sf::st_crs(ls) <- sf::st_crs(target_crs)
+
+    strm_lines_base <- process_input(
+      burn_streams,
+      align_to = ls
+    ) |>
+      sf::st_as_sf() |>
+      sf::st_buffer(units::as_units(stream_keep_burnbuff,"m"),endCapStyle = "FLAT") |>
+      dplyr::summarise()
+
+    whitebox::wbt_stream_link_identifier(
+      d8_pntr = "dem_d8.tif",
+      streams = "dem_streams_d8.tif",
+      output = "dem_streams_d8_link.tif"
+    )
+
+    whitebox::wbt_raster_streams_to_vector(
+      "dem_streams_d8_link.tif",
+      "dem_d8.tif",
+      "dem_streams_d8_link.shp"
+    )
+
+    dem_lines_base <- sf::read_sf(
+      file.path(temp_dir,"dem_streams_d8_link.shp")
+      ) |>
+      sf::st_set_crs(sf::st_crs(target_crs)) |>
+      dplyr::group_by(STRM_VAL) |>
+      dplyr::summarise() |>
+      sf::st_buffer(units::as_units(stream_keep_dembuff,"m"),endCapStyle = "FLAT") |>
+      dplyr::mutate(area = sf::st_area(geometry))
+
+    intersect_pct <- sf::st_intersection(
+      dem_lines_base,
+      strm_lines_base
+    )
+
+    intersect_pct <- intersect_pct |>
+      dplyr::mutate(intersect_area = as.numeric(sf::st_area(geometry)/area)) |>
+      dplyr::select(STRM_VAL,intersect_area) |>
+      sf::st_drop_geometry()
+
+    intersect_thres <- intersect_pct |>
+      dplyr::filter(intersect_area > stream_keep_thresh)
+
+    dem_lines <- sf::read_sf(
+      file.path(temp_dir,"dem_streams_d8_link.shp")
+    ) |>
+      sf::st_set_crs(sf::st_crs(target_crs)) |>
+      dplyr::filter(STRM_VAL %in% intersect_thres$STRM_VAL) |>
+      dplyr::mutate(STRM_VAL = 1)
+
+    tstrm2 <- tempfile(fileext = ".shp")
+    sf::write_sf(dem_lines, tstrm2)
+
+    whitebox::wbt_rasterize_streams(
+      streams = tstrm2,
+      base = "dem_d8.tif",,
+      output = "dem_streams_d8_s.tif"
+    )
+
+    dem_lines <- terra::rast(file.path(temp_dir, "dem_streams_d8_s.tif"))
+
+    names(dem_lines) <- "dem_streams_d8_sub"
+    terra::writeRaster(dem_lines,
+                       file.path(temp_dir, "dem_streams_d8_sub.tif"),
+                       overwrite = TRUE)
+  }
+
+
   # ── Write outputs to GeoPackage ─────────────────────────────────────────
   raster_files <- c(
     "dem_raw.tif",
@@ -270,7 +377,8 @@ process_flowdir <- function(
     "dem_d8.tif",
     "dem_accum_d8.tif",
     "dem_accum_d8_sca.tif",
-    "dem_streams_d8.tif"
+    "dem_streams_d8.tif",
+    "dem_streams_d8_sub.tif"
   )
 
   # Write DEM extent polygon
@@ -317,14 +425,14 @@ process_flowdir <- function(
 #' Burn streams into DEM with graduated buffering
 #' @noRd
 burn_dem <- function(
-  dem,
-  burn_streams,
-  burn_depth,
-  burn_slope_dist,
-  burn_slope_depth,
-  target_crs,
-  temp_dir,
-  gdal_arg
+    dem,
+    burn_streams,
+    burn_depth,
+    burn_slope_dist,
+    burn_slope_depth,
+    target_crs,
+    temp_dir,
+    gdal_arg
 ) {
   bbox <- terra::as.polygons(terra::ext(dem), crs = target_crs)
 

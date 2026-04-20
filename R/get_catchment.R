@@ -114,6 +114,15 @@ get_catchment <- function(
     ))
   }
 
+  if (verbose) {
+    message(
+      "Generating catchments for ",
+      nrow(still_needed),
+      " targets (",
+      nrow(already_done),
+      " already cached)"
+    )
+  }
   # ── Compute missing catchments in parallel ──────────────────────────────
   progressr::with_progress(enable = verbose, {
     p <- progressr::progressor(steps = nrow(still_needed))

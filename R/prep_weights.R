@@ -191,11 +191,6 @@ prep_weights <- function(
 
   # ── Check what already exists ───────────────────────────────────────────
   weighting_scheme_s <- weighting_scheme[grepl("FLS", weighting_scheme)]
-  if (all(weighting_scheme_s %in% lyrs$layer_name)) {
-    if (verbose) {
-      message("Stream-targeted weights already exist; won't recalculate.")
-    }
-  }
   weighting_scheme_s <- weighting_scheme_s[
     !weighting_scheme_s %in%
       lyrs$layer_name
@@ -229,11 +224,21 @@ prep_weights <- function(
     )
   }
 
+  if (verbose) {
+    message("Preparing inverse distance weights")
+  }
+
+  if (all(weighting_scheme_s %in% lyrs$layer_name)) {
+    if (verbose) {
+      message("Stream-targeted weights already exist; won't recalculate.")
+    }
+  }
+
   # ── Write rasters to temp ───────────────────────────────────────────────
   temp_dir_sub <- file.path(temp_dir, basename(tempfile()))
   dir.create(temp_dir_sub)
 
-  for (lyr in c("dem_streams_d8", "dem_final", "dem_accum_d8", "dem_d8")) {
+  for (lyr in c("dem_streams_d8_sub", "dem_final", "dem_accum_d8", "dem_d8")) {
     terra::writeRaster(
       read_ihydro(input, lyr),
       file.path(temp_dir_sub, paste0(lyr, ".tif")),
@@ -254,7 +259,7 @@ prep_weights <- function(
       hw_streams <- hydroweight(
         hydroweight_dir = temp_hw,
         target_O = NULL,
-        target_S = file.path(temp_dir_sub, "dem_streams_d8.tif"),
+        target_S = file.path(temp_dir_sub, "dem_streams_d8_sub.tif"),
         target_uid = "ALL",
         OS_combine = FALSE,
         dem = file.path(temp_dir_sub, "dem_final.tif"),
@@ -270,6 +275,14 @@ prep_weights <- function(
 
     for (r in hw_streams) {
       write_raster_gpkg(r, output_filename$outfile)
+
+      # lyr_name <- names(r)
+      # r2 <- r^2
+      # lyr_name2 <- lyr_name
+      # lyr_name2 <- gsub("iFLS", "iFLSSQ", lyr_name2)
+      # names(r2) <- gsub("iFLS", "iFLSSQ", names(r2))
+      # terra::varnames(r2) <- lyr_name2
+      # write_raster_gpkg(r2, output_filename$outfile)
     }
     rm(hw_streams)
     unlink(temp_hw, recursive = TRUE, force = TRUE)
@@ -484,6 +497,21 @@ compute_point_weights <- function(
         msg <- conditionMessage(attr(res, "condition"))
         if (!msg %in% c("stoi", "stol")) stop(msg)
       }
+
+      # r2 <- r^2
+      # lyr_name2 <- lyr_name
+      # lyr_name2 <- gsub("iFLO", "iFLOSQ", lyr_name2)
+      # names(r2) <- gsub("iFLO", "iFLOSQ", names(r2))
+      # terra::varnames(r2) <- lyr_name2
+      # res <- try(
+      #   write_raster_gpkg(r2, output_filename$outfile, lyr_name2),
+      #   silent = TRUE
+      # )
+      # if (inherits(res, "try-error")) {
+      #   msg <- conditionMessage(attr(res, "condition"))
+      #   if (!msg %in% c("stoi", "stol")) stop(msg)
+      # }
+
       if (!is.null(p)) {
         p()
       }
@@ -640,7 +668,7 @@ point_weight_worker <- carrier::crate(
     #options(dplyr.summarise.inform = FALSE, scipen = 999)
     `%>%` <- magrittr::`%>%`
 
-    target_S <- terra::rast(file.path(temp_dir_sub, "dem_streams_d8.tif"))
+    target_S <- terra::rast(file.path(temp_dir_sub, "dem_streams_d8_sub.tif"))
     dem <- terra::rast(file.path(temp_dir_sub, "dem_final.tif"))
     flow_accum <- terra::rast(file.path(temp_dir_sub, "dem_accum_d8.tif"))
 
@@ -726,6 +754,21 @@ drain_weight_rasters <- function(
         msg <- conditionMessage(attr(res, "condition"))
         if (!msg %in% c("stoi", "stol")) stop(msg)
       }
+
+      # r2 <- r^2
+      # lyr_name2 <- lyr_name
+      # lyr_name2 <- gsub("iFLO", "iFLOSQ", lyr_name2)
+      # names(r2) <- gsub("iFLO", "iFLOSQ", names(r2))
+      # terra::varnames(r2) <- lyr_name2
+      # res <- try(
+      #   write_raster_gpkg(r2, output_filename$outfile, lyr_name2),
+      #   silent = TRUE
+      # )
+      # if (inherits(res, "try-error")) {
+      #   msg <- conditionMessage(attr(res, "condition"))
+      #   if (!msg %in% c("stoi", "stol")) stop(msg)
+      # }
+
       p()
       try(file.remove(f), silent = TRUE)
     }

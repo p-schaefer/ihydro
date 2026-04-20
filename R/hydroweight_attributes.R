@@ -94,38 +94,65 @@
 #'
 #' @export
 hydroweight_attributes <- function(
-    attributes_dir = NULL,
-    loi,
-    loi_columns = NULL,
-    loi_numeric,
-    loi_numeric_stats = c("distwtd_mean", "distwtd_sd", "mean", "sd",
-                          "median", "min", "max", "sum", "cell_count", "NA_cell_count"),
-    roi = NULL,
-    roi_uid,
-    roi_uid_col = "ID",
-    distance_weights,
-    remove_region = NULL,
-    return_products = TRUE,
-    clean_tempfiles = TRUE
+  attributes_dir = NULL,
+  loi,
+  loi_columns = NULL,
+  loi_numeric,
+  loi_numeric_stats = c(
+    "distwtd_mean",
+    "distwtd_sd",
+    "mean",
+    "sd",
+    "median",
+    "min",
+    "max",
+    "sum",
+    "cell_count",
+    "NA_cell_count"
+  ),
+  roi = NULL,
+  roi_uid,
+  roi_uid_col = "ID",
+  distance_weights,
+  remove_region = NULL,
+  return_products = TRUE,
+  clean_tempfiles = TRUE
 ) {
-
   ## SETUP ---------------------------------------------------------------------
 
   ## Allowed choices
-  valid_stats   <- c("distwtd_mean", "distwtd_sd", "mean", "sd",
-                     "median", "min", "max", "sum", "cell_count", "NA_cell_count")
-  loi_numeric_stats <- match.arg(loi_numeric_stats, choices = valid_stats, several.ok = TRUE)
+  valid_stats <- c(
+    "distwtd_mean",
+    "distwtd_sd",
+    "mean",
+    "sd",
+    "median",
+    "min",
+    "max",
+    "sum",
+    "cell_count",
+    "NA_cell_count"
+  )
+  loi_numeric_stats <- match.arg(
+    loi_numeric_stats,
+    choices = valid_stats,
+    several.ok = TRUE
+  )
 
   ## Assign resampling type
   loi_resample <- ifelse(loi_numeric, "bilinear", "near")
 
   ## Create a stable, unique working subdir (mirrors hydroweight pattern)
   if (!is.null(attributes_dir)) {
-    own_tempdir <- file.path(attributes_dir,
-                             paste0(roi_uid, "_hwa_tmp_", basename(tempfile())))
+    own_tempdir <- file.path(
+      attributes_dir,
+      paste0(roi_uid, "_hwa_tmp_", basename(tempfile()))
+    )
   } else {
-    own_tempdir <- file.path(tempdir(),
-                             paste0(roi_uid, "_hwa_tmp_", basename(tempfile())))
+    own_tempdir <- file.path(
+      tempdir(),
+      paste0(roi_uid, "_hwa_tmp_", basename(tempfile()))
+    )
   }
   dir.create(own_tempdir, recursive = TRUE, showWarnings = FALSE)
 
@@ -134,103 +161,106 @@ hydroweight_attributes <- function(
   terra::terraOptions(tempdir = own_tempdir, verbose = FALSE)
 
   ## Ensure cleanup / terra options restoration happen even on error
-  on.exit({
-    # restore terra options
-    opts <- old_terra_opts
-    opts$metadata <- NULL
-    opts$names    <- NULL
-    if (identical(opts$filetype, "")) opts$filetype <- NULL
-    do.call(terra::terraOptions, opts)
+  on.exit(
+    {
+      # restore terra options
+      opts <- old_terra_opts
+      opts$metadata <- NULL
+      opts$names <- NULL
+      if (identical(opts$filetype, "")) {
+        opts$filetype <- NULL
+      }
+      do.call(terra::terraOptions, opts)
 
-    if (isTRUE(clean_tempfiles)) {
-      unlink(own_tempdir, recursive = TRUE, force = TRUE)
-      suppressWarnings(terra::tmpFiles(current = TRUE,
-                                       orphan  = TRUE,
-                                       old     = TRUE,
-                                       remove  = TRUE))
-    }
-  }, add = TRUE)
+      if (isTRUE(clean_tempfiles)) {
+        unlink(own_tempdir, recursive = TRUE, force = TRUE)
+        suppressWarnings(terra::tmpFiles(
+          current = TRUE,
+          orphan = TRUE,
+          old = TRUE,
+          remove = TRUE
+        ))
+      }
+    },
+    add = TRUE
+  )
 
   ## READ DISTANCE WEIGHTS -----------------------------------------------------
   if (inherits(distance_weights, "list")) {
-
-    if ((inherits(distance_weights[[1]], "character") &&
-         grepl("\\.tif$", distance_weights[[1]])) ||
-        inherits(distance_weights[[1]], "PackedSpatRaster")) {
-
+    if (
+      (inherits(distance_weights[[1]], "character") &&
+        grepl("\\.tif$", distance_weights[[1]])) ||
+        inherits(distance_weights[[1]], "PackedSpatRaster")
+    ) {
       distance_weights <- lapply(distance_weights, terra::rast)
-
     } else if (inherits(distance_weights[[1]], "SpatRaster")) {
-
       # already fine
       distance_weights <- distance_weights
     }
-
   } else if (inherits(distance_weights, "character")) {
-
     if (grepl("\\.tif$", distance_weights)) {
       distance_weights <- list(terra::rast(distance_weights))
-
     } else if (grepl("\\.zip$", distance_weights)) {
       fls <- utils::unzip(distance_weights, list = TRUE)
       fls <- file.path("/vsizip", distance_weights, fls$Name)
       distance_weights <- lapply(fls, terra::rast)
       names(distance_weights) <- sapply(distance_weights, names)
-
     } else {
       stop("'distance_weights' must be .zip, tif, or list of rasters")
     }
   }
 
   ## Unpack if PackedSpatRaster
-  distance_weights <- lapply(distance_weights, function(x)
+  distance_weights <- lapply(distance_weights, function(x) {
     if (inherits(x, "PackedSpatRaster")) {
       terra::rast(x)
-    } else {x}
-  )
+    } else {
+      x
+    }
+  })
   names(distance_weights) <- sapply(distance_weights, names)
 
   dw_ref <- distance_weights[[1]]
 
   ## PROCESS INPUTS ------------------------------------------------------------
   if (is.null(roi)) {
-
     roi <- dw_ref
     roi[!is.na(roi)] <- 1
     names(roi) <- "roi"
-
   } else {
-
     roi <- process_input(
-      input       = roi,
-      input_name  = "roi",
-      align_to    = dw_ref,
+      input = roi,
+      input_name = "roi",
+      align_to = dw_ref,
       clip_region = dw_ref,
       resample_type = "near",
       working_dir = own_tempdir
     )
 
-    if (inherits(roi, "SpatRaster") && terra::nlyr(roi) > 1) roi <- roi[[1]]
-    if (inherits(roi, "SpatVector") && terra::ncol(roi) > 1) roi <- roi[, names(roi)[1]]
+    if (inherits(roi, "SpatRaster") && terra::nlyr(roi) > 1) {
+      roi <- roi[[1]]
+    }
+    if (inherits(roi, "SpatVector") && terra::ncol(roi) > 1) {
+      roi <- roi[, names(roi)[1]]
+    }
     names(roi) <- "roi"
   }
 
   ## Remove region if provided -------------------------------------------------
   remove_region <- process_input(
-    input       = remove_region,
-    input_name  = "remove_region",
-    align_to    = dw_ref,
+    input = remove_region,
+    input_name = "remove_region",
+    align_to = dw_ref,
     clip_region = dw_ref,
     resample_type = "near",
     working_dir = own_tempdir
   )
 
   if (!is.null(remove_region)) {
-
     roi <- process_input(
-      input       = roi,
-      input_name  = "roi",
-      align_to    = dw_ref,
+      input = roi,
+      input_name = "roi",
+      align_to = dw_ref,
       clip_region = dw_ref,
       resample_type = "near",
       working_dir = own_tempdir
@@ -247,30 +277,35 @@ hydroweight_attributes <- function(
 
   ## Convert ROI to polygon
   roi_p <- process_input(
-    input       = roi,
-    input_name  = "roi",
-    align_to    = terra::vect("POLYGON ((0 -5, 10 0, 10 -10, 0 -5))",
-                              crs = terra::crs(dw_ref)),
+    input = roi,
+    input_name = "roi",
+    align_to = terra::vect(
+      "POLYGON ((0 -5, 10 0, 10 -10, 0 -5))",
+      crs = terra::crs(dw_ref)
+    ),
     resample_type = "near",
     working_dir = own_tempdir
   )
 
   loi <- process_input(
-    input                 = loi,
-    input_name            = "loi",
-    input_variable_names  = loi_columns,
-    align_to              = dw_ref,
-    clip_region           = roi,
-    resample_type         = loi_resample,
-    working_dir           = own_tempdir
+    input = loi,
+    input_name = "loi",
+    input_variable_names = loi_columns,
+    align_to = dw_ref,
+    clip_region = roi,
+    resample_type = loi_resample,
+    working_dir = own_tempdir
   )
 
   ## Process distance weights with remove_region applied -----------------------
-  distance_weights <- lapply(distance_weights, process_input,
-                             align_to = dw_ref,
-                             clip_region = roi,
-                             resample_type = "bilinear",
-                             working_dir = own_tempdir)
+  distance_weights <- lapply(
+    distance_weights,
+    process_input,
+    align_to = dw_ref,
+    clip_region = roi,
+    resample_type = "bilinear",
+    working_dir = own_tempdir
+  )
 
   ## CALCULATE LOI STATISTICS --------------------------------------------------
 
@@ -280,23 +315,53 @@ hydroweight_attributes <- function(
   (loi_stats <- list(UID = loi_stats))
 
   if (loi_numeric) {
-
     ## Helper for global stats
-    fun_global <- function(x, fun) terra::global(x, fun, na.rm = TRUE) |> unlist()
+    fun_global <- function(x, fun) {
+      terra::global(x, fun, na.rm = TRUE) |> unlist()
+    }
 
-    if ("mean"   %in% loi_numeric_stats) { loi_mean   <- fun_global(loi, "mean") } else { loi_mean <- NULL }
-    if ("sd"     %in% loi_numeric_stats) { loi_sd     <- fun_global(loi, "sd") }   else { loi_sd   <- NULL }
-    if ("median" %in% loi_numeric_stats) { loi_median <- terra::global(loi, \(x) stats::median(x, na.rm = TRUE)) |> unlist() |> stats::setNames("median") } else { loi_median <- NULL }
-    if ("min"    %in% loi_numeric_stats) { loi_min <- fun_global(loi, "min") } else { loi_min <- NULL }
-    if ("max"    %in% loi_numeric_stats) { loi_max <- fun_global(loi, "max") } else { loi_max <- NULL }
-    if ("sum"    %in% loi_numeric_stats) { loi_sum <- fun_global(loi, "sum") } else { loi_sum <- NULL }
+    if ("mean" %in% loi_numeric_stats) {
+      loi_mean <- fun_global(loi, "mean")
+    } else {
+      loi_mean <- NULL
+    }
+    if ("sd" %in% loi_numeric_stats) {
+      loi_sd <- fun_global(loi, "sd")
+    } else {
+      loi_sd <- NULL
+    }
+    if ("median" %in% loi_numeric_stats) {
+      loi_median <- terra::global(loi, \(x) stats::median(x, na.rm = TRUE)) |>
+        unlist() |>
+        stats::setNames("median")
+    } else {
+      loi_median <- NULL
+    }
+    if ("min" %in% loi_numeric_stats) {
+      loi_min <- fun_global(loi, "min")
+    } else {
+      loi_min <- NULL
+    }
+    if ("max" %in% loi_numeric_stats) {
+      loi_max <- fun_global(loi, "max")
+    } else {
+      loi_max <- NULL
+    }
+    if ("sum" %in% loi_numeric_stats) {
+      loi_sum <- fun_global(loi, "sum")
+    } else {
+      loi_sum <- NULL
+    }
 
     if ("cell_count" %in% loi_numeric_stats) {
       cc <- fun_global(!is.na(loi), "sum")
       loi_cell_count <- cc
       loi_cell_count <- stats::setNames(
         loi_cell_count,
-        paste0(rep("cell_count", length(loi_cell_count)), seq_len(length(loi_cell_count)))
+        paste0(
+          rep("cell_count", length(loi_cell_count)),
+          seq_len(length(loi_cell_count))
+        )
       )
     } else {
       loi_cell_count <- NULL
@@ -304,11 +369,14 @@ hydroweight_attributes <- function(
 
     if ("NA_cell_count" %in% loi_numeric_stats) {
       roi_cc <- terra::global(roi, "sum", na.rm = TRUE)
-      loi_NA_cell_count <- unlist(rep(roi_cc, length(loi_cell_count))) - unlist(loi_cell_count)
+      loi_NA_cell_count <- unlist(rep(roi_cc, length(loi_cell_count))) -
+        unlist(loi_cell_count)
       loi_NA_cell_count <- stats::setNames(
         loi_NA_cell_count,
-        paste0(rep("NA_cell_count", length(loi_NA_cell_count)),
-               seq_len(length(loi_cell_count)))
+        paste0(
+          rep("NA_cell_count", length(loi_NA_cell_count)),
+          seq_len(length(loi_cell_count))
+        )
       )
     } else {
       loi_NA_cell_count <- NULL
@@ -335,7 +403,8 @@ hydroweight_attributes <- function(
       if (length(loi_columns) != nlyr) {
         warning(sprintf(
           "Length of 'loi_columns' (%d) does not match number of layers (%d). Truncating/recycling.",
-          length(loi_columns), nlyr
+          length(loi_columns),
+          nlyr
         ))
       }
       rep_len(loi_columns, nlyr)
@@ -348,7 +417,9 @@ hydroweight_attributes <- function(
     # 2) Apply names to each metric vector safely.
     #    Handles cases with or without numeric suffixes in 'old' names.
     lumped <- lapply(lumped, function(x) {
-      if (is.null(x)) return(NULL)
+      if (is.null(x)) {
+        return(NULL)
+      }
 
       old <- names(x)
       # If no names exist, fabricate indices 1..length(x)
@@ -375,8 +446,8 @@ hydroweight_attributes <- function(
       # Build "<layer_label>_<metric_base>" ensuring one underscore
       # Normalize metric base (trim, remove extra underscores)
       metric_base_clean <- gsub("_+", "_", trimws(metric_base))
-      metric_base_clean <- sub("^_", "", metric_base_clean)  # no leading "_"
-      metric_base_clean <- sub("_$", "", metric_base_clean)  # no trailing "_"
+      metric_base_clean <- sub("^_", "", metric_base_clean) # no leading "_"
+      metric_base_clean <- sub("_$", "", metric_base_clean) # no trailing "_"
 
       new_names <- paste0(label_vec[idx], "_", metric_base_clean)
       names(x) <- new_names
@@ -385,17 +456,19 @@ hydroweight_attributes <- function(
 
     loi_stats <- c(loi_stats, list(lumped = lumped))
 
-    distance_weights_attributes <- lapply(distance_weights[
-      sapply(distance_weights, names) != "lumped"], function(dw) {
-
+    distance_weights_attributes <- lapply(
+      distance_weights[
+        sapply(distance_weights, names) != "lumped"
+      ],
+      function(dw) {
         loi_dist <- loi * dw
         names(loi_dist) <- names(loi)
 
         loi_sum <- terra::global(loi_dist, "sum", na.rm = TRUE)
-        dw_sum  <- terra::global(dw, "sum", na.rm = TRUE)
+        dw_sum <- terra::global(dw, "sum", na.rm = TRUE)
 
         out_mean <- NULL
-        out_sd   <- NULL
+        out_sd <- NULL
 
         if ("distwtd_mean" %in% loi_numeric_stats) {
           out_mean <- unlist(loi_sum) / unlist(dw_sum)
@@ -403,63 +476,66 @@ hydroweight_attributes <- function(
         }
 
         if ("distwtd_sd" %in% loi_numeric_stats) {
+          if (is.null(out_mean)) {
+            out_mean <- unlist(loi_sum) / unlist(dw_sum)
+          }
+
           mu <- out_mean
           term1 <- terra::global((dw * (loi - mu)^2), "sum", na.rm = TRUE)
-          M     <- terra::global(dw != 0, "sum", na.rm = TRUE)
+          M <- terra::global(dw != 0, "sum", na.rm = TRUE)
           term2 <- ((M - 1) / M) * dw_sum
           out_sd <- sqrt(unlist(term1) / unlist(term2))
           names(out_sd) <- paste0(names(loi), "_", names(dw), "_distwtd_sd")
         }
 
-        tmp <- list(distwtd_mean = out_mean,
-                    distwtd_sd   = out_sd)
+        tmp <- list(distwtd_mean = out_mean, distwtd_sd = out_sd)
 
-        if (return_products)
+        if (return_products) {
           tmp <- c(tmp, list(loi_dist_rast = loi_dist))
+        }
 
         tmp
-      })
+      }
+    )
 
     distance_weights_attributes
 
     if ("lumped" %in% sapply(distance_weights, names)) {
       distance_weights_attributes$lumped <- list(loi_dist_rast = loi)
     }
-
   } else {
-
     ## Categorical statistics --------------------------------------------------
-   distance_weights_attributes <- lapply(distance_weights, function(dw) {
-
+    distance_weights_attributes <- lapply(distance_weights, function(dw) {
       loi_dist <- loi * dw
       names(loi_dist) <- names(loi)
 
       loi_sum <- terra::global(loi_dist, "sum", na.rm = TRUE)
-      dw_sum  <- terra::global(dw,       "sum", na.rm = TRUE)
+      dw_sum <- terra::global(dw, "sum", na.rm = TRUE)
 
       pct <- unlist(loi_sum) / unlist(dw_sum)
       names(pct) <- paste0(names(loi), "_", names(dw), "_prop")
 
       tmp <- list(pct_distwtd = pct)
-      if (return_products)
+      if (return_products) {
         tmp <- c(tmp, list(loi_dist_rast = loi_dist))
+      }
       tmp
     })
   }
 
   ## PREPARE OUTPUTS -----------------------------------------------------------
-  final_out_table <- lapply(distance_weights_attributes, function(x)
+  final_out_table <- lapply(distance_weights_attributes, function(x) {
     x[names(x) != "loi_dist_rast"]
-  )
+  })
   final_out_table <- c(loi_stats, final_out_table)
 
   final_out_table
 
-  final_out_table_nms <- lapply(names(final_out_table), function(x)
-    lapply(names(final_out_table[[x]]), function(y)
+  final_out_table_nms <- lapply(names(final_out_table), function(x) {
+    lapply(names(final_out_table[[x]]), function(y) {
       names(final_out_table[[x]][[y]])
-    )
-  )
+    })
+  })
   final_out_table_nms <- unlist(final_out_table_nms)
 
   final_out_table <- tibble::enframe(unlist(final_out_table)) |>
@@ -479,15 +555,14 @@ hydroweight_attributes <- function(
   return_list <- list(attribute_table = final_out_table)
 
   if (return_products) {
-    final_out_rasts <- lapply(distance_weights_attributes, function(x)
+    final_out_rasts <- lapply(distance_weights_attributes, function(x) {
       x[names(x) == "loi_dist_rast"]
-    )
-    final_out_rasts <- lapply(final_out_rasts, function(x)
+    })
+    final_out_rasts <- lapply(final_out_rasts, function(x) {
       lapply(x, terra::wrap)
-    )
+    })
     return_list <- c(return_list, list(return_products = final_out_rasts))
   }
 
   return(return_list)
 }
-

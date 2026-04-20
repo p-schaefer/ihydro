@@ -149,7 +149,7 @@ attrib_points <- function(
   )
 
   dem_layers <- c(
-    "dem_streams_d8",
+    "dem_streams_d8_sub",
     "dem_final",
     "dem_accum_d8",
     "dem_d8"
@@ -467,7 +467,7 @@ attrib_points <- function(
 
   # Load DEM rasters (proxies, no data in RAM)
   target_S <- terra::rast(
-    file.path(temp_dir_sub, "dem_streams_d8.tif")
+    file.path(temp_dir_sub, "dem_streams_d8_sub.tif")
   )
   dem <- terra::rast(
     file.path(temp_dir_sub, "dem_final.tif")

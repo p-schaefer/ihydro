@@ -9,7 +9,8 @@ get_catchment(
   sample_points = NULL,
   link_id = NULL,
   temp_dir = NULL,
-  verbose = FALSE
+  verbose = FALSE,
+  return = TRUE
 )
 }
 \arguments{

@@ -23,7 +23,7 @@ generate_subbasins <- function(
 
   # Extract required rasters
 
-  for (lyr in c("dem_d8", "dem_streams_d8")) {
+  for (lyr in c("dem_d8", "dem_streams_d8_sub")) {
     terra::writeRaster(
       read_ihydro(input, lyr),
       file.path(temp_dir, paste0(lyr, ".tif")),
@@ -40,7 +40,7 @@ generate_subbasins <- function(
   # ── Generate subbasin polygons ──────────────────────────────────────────
   whitebox::wbt_subbasins(
     d8_pntr = "dem_d8.tif",
-    streams = "dem_streams_d8.tif",
+    streams = "dem_streams_d8_sub.tif",
     output = "Subbasins.tif"
   )
 

@@ -290,7 +290,12 @@ process_input <- function(
             ...
           )
           names(output) <- orig_lyr_names
-          terra::varnames(output) <- input_name
+          ntry <- try(
+            {
+              terra::varnames(output) <- input_name
+            },
+            silent = TRUE
+          )
         }
       }
     }

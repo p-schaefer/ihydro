@@ -1417,10 +1417,10 @@ ihydro_layers(hydro_out)
 #> 5                dem_streams_d8    Raster         hydro
 #> 6                          iFLS    Raster           iDW
 #> 7                        HAiFLS    Raster           iDW
-#> 8  HAiFLO_unn_group6CiXWhxBzcTU    Raster           iDW
-#> 9  HAiFLO_unn_groupAJRRISvI9msf    Raster           iDW
-#> 10   iFLO_unn_group6CiXWhxBzcTU    Raster           iDW
-#> 11   iFLO_unn_groupAJRRISvI9msf    Raster           iDW
+#> 8  HAiFLO_unn_group6JYyR87N7Gtc    Raster           iDW
+#> 9  HAiFLO_unn_groupkkcqlRUD3oKk    Raster           iDW
+#> 10   iFLO_unn_group6JYyR87N7Gtc    Raster           iDW
+#> 11   iFLO_unn_groupkkcqlRUD3oKk    Raster           iDW
 #> 12                    Elevation    Raster           loi
 #> 13                 ds_flowpaths     Table     flow_path
 #> 14                 us_flowpaths     Table     flow_path
@@ -1702,16 +1702,16 @@ pmap(
   }
 )
 #> [[1]]
-#> [1] "attrib_points() took 0.36 min to calculate for 3 reaches with 94 attributes using 4 cores."
+#> [1] "attrib_points() took 0.39 min to calculate for 3 reaches with 94 attributes using 4 cores."
 #> 
 #> [[2]]
 #> [1] "fasttrib_points() took 0.35 min to calculate for 3 reaches with 94 attributes using 4 cores."
 #> 
 #> [[3]]
-#> [1] "attrib_points() took 34.97 min to calculate for 1251 reaches with 92 attributes using 4 cores."
+#> [1] "attrib_points() took 37.02 min to calculate for 1251 reaches with 92 attributes using 4 cores."
 #> 
 #> [[4]]
-#> [1] "fasttrib_points() took 6.96 min to calculate for 1251 reaches with 92 attributes using 4 cores."
+#> [1] "fasttrib_points() took 9.98 min to calculate for 1251 reaches with 92 attributes using 4 cores."
 
 paste0(
   round(dw_time[[3]] / 60, 2),
@@ -1721,7 +1721,7 @@ paste0(
   nbrOfWorkers(),
   " cores."
 )
-#> [1] "2.74 min to calculate distance weights for 1251 reaches using 4 cores."
+#> [1] "4.9 min to calculate distance weights for 1251 reaches using 4 cores."
 ```
 
 [Back to top](#1-introduction)

@@ -145,6 +145,7 @@ hydro_out <- process_flowdir(
   dem = toy_dem,
   burn_streams = ex_data("streams.shp"),
   burn_depth = 5,
+  stream_keep_thresh = NULL,
   burn_slope_dist = 500,
   burn_slope_depth = 5,
   min_length = 3,
@@ -282,7 +283,7 @@ tm_shape(rast(hydro_out$dem_final.tif)) +
     size = 0.35,
     col = "black",
     col_alpha = 1,
-    border.lwd = 1
+    lwd = 1
   ) +
   tm_shape(read_sf(file.path(ex_loc, "sites.shp"))) +
   tm_dots(
@@ -291,7 +292,7 @@ tm_shape(rast(hydro_out$dem_final.tif)) +
     size = 0.35,
     col = "black",
     col_alpha = 1,
-    border.lwd = 1
+    lwd = 1
   )
 ```
 
@@ -357,7 +358,7 @@ tm_shape(sub_out) +
     size = 0.45,
     col = "black",
     col_alpha = 1,
-    border.lwd = 1
+    lwd = 1
   ) +
   tm_layout(frame = FALSE)
 ```
@@ -449,7 +450,7 @@ tm_shape(read_sf(hydro_out_sparse$outfile, "Subbasins_poly")) +
     size = 0.2,
     col = "black",
     col_alpha = 1,
-    border.lwd = 1
+    lwd = 1
   )
 ```
 
@@ -513,7 +514,7 @@ p1 <- hydro_out$stream_lines %>%
     size = 0.45,
     col = "black",
     col_alpha = 1,
-    border.lwd = 1
+    lwd = 1
   ) +
   tm_title("Flow connected path log-length from 200") +
   tm_layout(legend.outside = TRUE)
@@ -540,7 +541,7 @@ p2 <- hydro_out$stream_lines %>%
     size = 0.45,
     col = "black",
     col_alpha = 1,
-    border.lwd = 1
+    lwd = 1
   ) +
   tm_title("Flow Unconnected path log-length from 99") +
   tm_layout(legend.outside = TRUE)
@@ -992,8 +993,6 @@ fasttrib_points_time_small <- system.time(
   )
 )
 
-ihydro_layers(hydro_out)
-
 attr1 <- final_attributes_sub_slow %>%
   dplyr::select(any_of(colnames(final_attributes_sub)), -link_id, -site_id)
 
@@ -1005,7 +1004,10 @@ attr2 <- final_attributes_sub %>%
   ) %>%
   dplyr::select(any_of(colnames(final_attributes_sub)))
 
-stopifnot(all.equal(attr1, attr2))
+# Note that fasttrib_points() uses exactextractr::exact_extract() which uses 32-bit precision,
+# so there may be some small differences in the values, but they should be very close.
+# fastrib_points outputs align with Hmisc weighted mean, variance and sd calculations
+all.equal(attr1, attr2)
 
 final_attributes_sub
 ```
@@ -1054,9 +1056,9 @@ In order to make predictions across the landscape, we will need to calculate our
 dw_time <- system.time(
   Processed_HW <- prep_weights(
     input = hydro_out,
-    output_filename = file.path(tempfile(), "Processed_HW_out.gpkg"),
+    output_filename = file.path(tempdir(), "Processed_HW_out.gpkg"),
     weighting_scheme = c("iFLS", "iFLO", "HAiFLO", "HAiFLS"),
-    target_o_type = c("point"),
+    target_o_type = c("segment_point"),
     write_strategy = "batched"
   )
 )
@@ -1068,7 +1070,8 @@ fasttrib_points_time_big <- system.time(
     out_filename = "sample_points_wgtattr.csv",
     loi_file = output_filename_loi,
     loi_cols = NULL,
-    iDW_file = file.path(tempfile(), "iDW_temp.gpkg"), # to use previously calculated weights file.path(tempfile(),"Processed_HW_out.gpkg")
+    iDW_file = file.path(tempfile(), "iDW_temp.gpkg"), 
+    #iDW_file =  file.path(tempdir(),"Processed_HW_out.gpkg"), # to use previously calculated weights 
     store_iDW = T,
     sample_points = NULL, # by specifying neither sample_points nor link_id
     link_id = NULL, #   we get all reaches
@@ -1363,7 +1366,7 @@ spatial_cv <- map2(
         size = 0.3,
         col = "black",
         col_alpha = 1,
-        border.lwd = 1
+        lwd = 1
       ) +
       tm_title(paste0("Spatial CV", y)) +
       tm_layout()
@@ -1389,7 +1392,7 @@ standard_cv <- map2(
         size = 0.3,
         col = "black",
         col_alpha = 1,
-        border.lwd = 1
+        lwd = 1
       ) +
       tm_title(paste0("Standard CV", y)) +
       tm_layout()

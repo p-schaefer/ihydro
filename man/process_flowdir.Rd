@@ -8,6 +8,9 @@ process_flowdir(
   dem,
   threshold,
   burn_streams = NULL,
+  stream_keep_thresh = NULL,
+  stream_keep_burnbuff = 25,
+  stream_keep_dembuff = 1,
   burn_depth = NULL,
   burn_slope_dist = NULL,
   burn_slope_depth = NULL,
@@ -26,6 +29,9 @@ process_flowdir(
 \item{threshold}{Integer. Flow accumulation threshold for stream initiation.}
 
 \item{burn_streams}{Optional stream layer to burn into the DEM.}
+
+\item{stream_keep_thresh}{Numeric minimum proportion of overlap between \code{burn_streams}
+and stream segments extracted from DEM to keep in final stream layer (see details)}
 
 \item{burn_depth}{Numeric burn depth in map elevation units (default \code{NULL}).}
 
@@ -59,6 +65,7 @@ The contained rasters are:
 \item \code{dem_accum_d8}: D8 flow accumulation in number of upstream cells.
 \item \code{dem_accum_d8_sca}: D8 flow accumulation in upstream contributing area (SCA).
 \item \code{dem_streams_d8}: D8-derived stream raster based on the specified flow accumulation threshold.
+\item \code{dem_streams_d8_sub}: Subset of dem_streams_d8 which meet minimum stream_keep_thresh.
 If \code{return_products} is \code{TRUE}, the returned \code{ihydro} object will also include the above rasters as \code{SpatRaster} objects for immediate use in R. Otherwise, only file paths are included and temporary files are cleaned up.
 }
 }
@@ -75,6 +82,11 @@ to directing surface flows to the nearest \code{burn_streams}.
 \item with \code{burn_depth}, then the dem covered by the supplied stream lines is depressed
 into the landscape by \code{burn_depth} meters.
 \item \link[whitebox:wbt_feature_preserving_smoothing]{whitebox::wbt_feature_preserving_smoothing} is applied
+\item if \code{stream_keep_thresh} is provided, then the overlap between \code{burn_streams}
+and \code{dem_streams_d8} is calculated and only stream segments >= \code{stream_keep_thresh}
+will be kept in the final product (note that this option should only be specified
+if the \code{burn_streams} is considered highly accurate, and is burned into the DEM
+deeply enough that extracted streams closely align)
 }
 
 \code{depression_corr} can apply

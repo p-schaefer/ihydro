@@ -60,7 +60,7 @@ attrib_streamline <- function(
   gdal_arg <- if (compress) "COMPRESS=NONE" else NULL
 
   # Extract rasters from gpkg to temp
-  for (lyr in c("dem_d8", "dem_streams_d8", "dem_final")) {
+  for (lyr in c("dem_d8", "dem_streams_d8_sub", "dem_final")) {
     terra::writeRaster(
       read_ihydro(input, lyr),
       file.path(temp_dir, paste0(lyr, ".tif")),
@@ -275,12 +275,12 @@ compute_wbt_stream_attrs <- function(temp_dir, extra_attr) {
   # Essential attributes
   whitebox::wbt_stream_link_identifier(
     d8_pntr = "dem_d8.tif",
-    streams = "dem_streams_d8.tif",
+    streams = "dem_streams_d8_sub.tif",
     output = "link_id.tif"
   )
   whitebox::wbt_stream_link_class(
     d8_pntr = "dem_d8.tif",
-    streams = "dem_streams_d8.tif",
+    streams = "dem_streams_d8_sub.tif",
     output = "link_class.tif"
   )
   whitebox::wbt_stream_link_length(
@@ -290,12 +290,12 @@ compute_wbt_stream_attrs <- function(temp_dir, extra_attr) {
   )
   whitebox::wbt_tributary_identifier(
     d8_pntr = "dem_d8.tif",
-    streams = "dem_streams_d8.tif",
+    streams = "dem_streams_d8_sub.tif",
     output = "trib_id.tif"
   )
   whitebox::wbt_farthest_channel_head(
     d8_pntr = "dem_d8.tif",
-    streams = "dem_streams_d8.tif",
+    streams = "dem_streams_d8_sub.tif",
     output = "USChnLn_Fr.tif"
   )
 
@@ -314,7 +314,7 @@ compute_wbt_stream_attrs <- function(temp_dir, extra_attr) {
       fn = whitebox::wbt_stream_slope_continuous,
       args = list(
         d8_pntr = "dem_d8.tif",
-        streams = "dem_streams_d8.tif",
+        streams = "dem_streams_d8_sub.tif",
         dem = "Elevation.tif",
         output = "cont_slope.tif"
       )
@@ -322,7 +322,7 @@ compute_wbt_stream_attrs <- function(temp_dir, extra_attr) {
     StOrd_Hack = list(
       fn = whitebox::wbt_hack_stream_order,
       args = list(
-        streams = "dem_streams_d8.tif",
+        streams = "dem_streams_d8_sub.tif",
         d8_pntr = "dem_d8.tif",
         output = "StOrd_Hack.tif"
       )
@@ -330,7 +330,7 @@ compute_wbt_stream_attrs <- function(temp_dir, extra_attr) {
     StOrd_Str = list(
       fn = whitebox::wbt_strahler_stream_order,
       args = list(
-        streams = "dem_streams_d8.tif",
+        streams = "dem_streams_d8_sub.tif",
         d8_pntr = "dem_d8.tif",
         output = "StOrd_Str.tif"
       )
@@ -338,7 +338,7 @@ compute_wbt_stream_attrs <- function(temp_dir, extra_attr) {
     StOrd_Hort = list(
       fn = whitebox::wbt_horton_stream_order,
       args = list(
-        streams = "dem_streams_d8.tif",
+        streams = "dem_streams_d8_sub.tif",
         d8_pntr = "dem_d8.tif",
         output = "StOrd_Hort.tif"
       )
@@ -346,7 +346,7 @@ compute_wbt_stream_attrs <- function(temp_dir, extra_attr) {
     StOrd_Shr = list(
       fn = whitebox::wbt_shreve_stream_magnitude,
       args = list(
-        streams = "dem_streams_d8.tif",
+        streams = "dem_streams_d8_sub.tif",
         d8_pntr = "dem_d8.tif",
         output = "StOrd_Shr.tif"
       )
@@ -355,7 +355,7 @@ compute_wbt_stream_attrs <- function(temp_dir, extra_attr) {
       fn = whitebox::wbt_length_of_upstream_channels,
       args = list(
         d8_pntr = "dem_d8.tif",
-        streams = "dem_streams_d8.tif",
+        streams = "dem_streams_d8_sub.tif",
         output = "USChnLn_To.tif"
       )
     )
@@ -601,7 +601,7 @@ identify_adjacent_links <- function(
 ) {
   direction <- match.arg(direction)
 
-  st_r <- terra::rast(file.path(temp_dir, "dem_streams_d8.tif"))
+  st_r <- terra::rast(file.path(temp_dir, "dem_streams_d8_sub.tif"))
   d8_pntr <- terra::rast(file.path(temp_dir, "dem_d8.tif"))
 
   # Select nodes: upstream = min USChnLn_Fr, downstream = max
@@ -645,7 +645,7 @@ identify_adjacent_links <- function(
     dplyr::mutate(
       on_stream = data.frame(
         terra::extract(st_r, terra::xyFromCell(st_r, cell_num))
-      )$dem_streams_d8
+      )$dem_streams_d8_sub
     ) |>
     dplyr::filter(on_stream == 1)
 
