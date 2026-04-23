@@ -544,7 +544,7 @@ set_terra_options <- function(
     tempdir = temp_dir,
     verbose = verbose,
     progress = progress,
-    parallel = FALSE
+    parallel = n_cores == 1
   )
 
   old_opts

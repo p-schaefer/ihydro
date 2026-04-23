@@ -45,7 +45,8 @@ Imports:
     units,
     whitebox,
     sfheaders,
-    mirai
+    mirai,
+    SSNbler
 Depends:
     R (>= 4.2.0)
 Suggests:
