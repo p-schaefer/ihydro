@@ -544,7 +544,9 @@ fasttrib_points <- function(
     fun,
     quantiles = NULL,
     max_cells_in_memory = 3e+07,
-    include_count = FALSE
+    include_count = FALSE,
+    n_cores = 1L,
+    temp_dir_sub = NULL
 ) {
   if (is.null(x_cols) && is.null(weight_cols)) {
     return(NULL)
@@ -556,6 +558,23 @@ fasttrib_points <- function(
     }
     all_rasts[[weight_cols]]
   }
+
+  # Per-worker terra memory management
+  if (is.null(temp_dir_sub)) {
+    temp_dir_sub <- tempfile()
+  }
+  if (!dir.exists(temp_dir_sub)) {
+    dir.create(temp_dir_sub)
+  }
+  old_terra_opts <- ihydro:::set_terra_options(
+    n_cores = n_cores,
+    temp_dir = temp_dir_sub,
+    verbose = FALSE
+  )
+  on.exit(ihydro:::restore_terra_options(old_terra_opts), add = TRUE)
+  on.exit(suppressWarnings(unlink(temp_dir_sub,recursive = TRUE,force = TRUE)), add = TRUE)
+  on.exit(gc(verbose = FALSE), add = TRUE)
+
 
   if (include_count) {
     all_rasts[["count_internal"]] <- all_rasts[[1]]
@@ -742,6 +761,7 @@ fasttrib_points <- function(
     median = FALSE,
     quantiles = NULL,
     max_cells_in_memory = 3e+07,
+    n_cores = 1L,
     include_count = FALSE,
     progressor = NULL
   ) {
@@ -793,6 +813,7 @@ fasttrib_points <- function(
         fun = fun,
         quantiles = quantiles,
         max_cells_in_memory = max_cells_in_memory,
+        n_cores = n_cores,
         include_count = include_count
       )
     } else {
@@ -805,6 +826,7 @@ fasttrib_points <- function(
         default_weight = NA_real_,
         fun = "sum",
         max_cells_in_memory = max_cells_in_memory,
+        n_cores = n_cores,
         include_count = include_count
       )
 
@@ -819,6 +841,7 @@ fasttrib_points <- function(
             default_weight = NA_real_,
             fun = c("sum", "mean", "stdev", "variance", "count", "min", "max"),
             max_cells_in_memory = max_cells_in_memory,
+            n_cores = n_cores,
             include_count = FALSE
           )
         }
@@ -833,6 +856,7 @@ fasttrib_points <- function(
             default_weight = NA_real_,
             fun = c("sum"),
             max_cells_in_memory = max_cells_in_memory,
+            n_cores = n_cores,
             include_count = FALSE
           )
         }
@@ -850,6 +874,7 @@ fasttrib_points <- function(
             default_weight = 0,
             fun = c("weighted_sum", "weighted_mean", "weighted_variance"),
             max_cells_in_memory = max_cells_in_memory,
+            n_cores = n_cores,
             include_count = FALSE
           )
         }
@@ -864,6 +889,7 @@ fasttrib_points <- function(
             default_weight = 0,
             fun = c("weighted_sum"),
             max_cells_in_memory = max_cells_in_memory,
+            n_cores = n_cores,
             include_count = FALSE
           )
         }
@@ -957,24 +983,6 @@ fasttrib_points <- function(
   ws_s <- iDW_cols[iDW_cols %in% c("iFLS", "HAiFLS")]
   ws_o <- iDW_cols[iDW_cols %in% c("iFLO", "HAiFLO")]
 
-  # Create squared weights for variance and standard deviation calculations if needed
-  #iDWSQ_rast_input <- NULL
-  #iDWSQ_cols <- NULL
-  #if (any(fun %in% c("sd", "var"))) {
-  #  if (length(iDW_cols) > 0L) {
-  #    iDWSQ_rast_input <- iDW_rast_input$outfile
-  #    iDWSQ_cols <- c(
-  #      paste0(ws_s, "SQ"),
-  #      unlist(
-  #        lapply(
-  #          paste0(ws_o, "SQ_unn_group"),
-  #          function(x) paste0(x, unique(subb_ids$unn_group))
-  #        )
-  #      )
-  #    )
-  #  }
-  #}
-
   subb_lookup <- ihydro::read_ihydro(
     input,
     "us_flowpaths"
@@ -1040,9 +1048,8 @@ fasttrib_points <- function(
           cat_rast = cat_rast,
           iDW_rast_input = iDW_rast_input$outfile,
           iDW_cols = ws_s,
-          #iDWSQ_rast_input = iDWSQ_rast_input,
-          #iDWSQ_cols = paste0(ws_s, "SQ"),
           max_cells_in_memory = max_cells_in_memory,
+          n_cores = n_cores,
           include_count = !count_with_o
         )
       }
@@ -1088,9 +1095,8 @@ fasttrib_points <- function(
           cat_rast = cat_rast,
           iDW_rast_input = iDW_rast_input$outfile,
           iDW_cols = paste(ws_o, unique(x$unn_group), sep = "_unn_group"),
-          #iDWSQ_rast_input = iDWSQ_rast_input,
-          #iDWSQ_cols = paste(ws_o, unique(x$unn_group), sep = "SQ_unn_group"),
           max_cells_in_memory = max_cells_in_memory,
+          n_cores = n_cores,
           include_count = count_with_o
         )
       }
@@ -1121,6 +1127,7 @@ fasttrib_points <- function(
           median = "median" %in% fun,
           quantiles = quantiles,
           max_cells_in_memory = max_cells_in_memory,
+          n_cores = n_cores,
           include_count = FALSE
         )
       }

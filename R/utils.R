@@ -543,7 +543,8 @@ set_terra_options <- function(
     memfrac = per_worker_frac,
     tempdir = temp_dir,
     verbose = verbose,
-    progress = progress
+    progress = progress,
+    parallel = FALSE
   )
 
   old_opts
