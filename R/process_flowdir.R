@@ -86,6 +86,7 @@ process_flowdir <- function(
     threshold,
     burn_streams = NULL,
     stream_keep_thresh = NULL,
+    chunk_size = 250,
     stream_keep_burnbuff = 25,
     stream_keep_dembuff = 1,
     burn_depth = NULL,
@@ -300,6 +301,8 @@ process_flowdir <- function(
       message("Trimming DEM streams to match burn_streams")
     }
 
+    res <- terra::res(dem)[[1]]
+
     ls <- sf::st_sfc(sf::st_linestring(rbind(c(0,0),c(0,1))))
     sf::st_crs(ls) <- sf::st_crs(target_crs)
 
@@ -323,11 +326,71 @@ process_flowdir <- function(
       "dem_streams_d8_link.shp"
     )
 
-    dem_lines_base <- sf::read_sf(
+    dem_lines_base0 <- sf::read_sf(
       file.path(temp_dir,"dem_streams_d8_link.shp")
-      ) |>
+    ) |>
       sf::st_set_crs(sf::st_crs(target_crs)) |>
+      tibble::as_tibble() |>
+      dplyr::mutate(
+        geometry_split = sf::st_line_sample(geometry,density = units::as_units(chunk_size,"m")),
+        geometry = sf::st_snap(geometry,geometry_split,sqrt(res))
+      ) |>
+      dplyr::mutate(
+        geometry = furrr::future_map2(geometry,
+                                      geometry_split,
+                                      ~ {
+                                        if (sf::st_is_empty(.y)) {
+                                          parent_line <- sf::st_coordinates(.x)[, 1:2]
+                                          parent_line <- sf::st_linestring(parent_line)
+                                          parent_line <- tibble::tibble(geometry = sf::st_as_sfc(list(parent_line)))
+                                          parent_line <- sf::st_as_sf(parent_line)
+                                          sf::st_crs(parent_line) <- sf::st_crs(target_crs)
+                                          return(parent_line)
+                                        }
+                                        .x <- sf::st_snap(.x,.y,sqrt(res))
+                                        parent_line <- sf::st_coordinates(.x)[, 1:2]
+                                        parent_line <- data.frame(matrix(parent_line,ncol=2,byrow=F))
+                                        snap_point <- sf::st_coordinates(.y)[, 1:2]
+                                        snap_point <- data.frame(matrix(snap_point,ncol=2,byrow=F))
+                                        parent_index <- list()
+                                        for (i in 1:nrow(snap_point)) {
+                                          parent_index[[length(parent_index) + 1]] <- apply(parent_line, 1, function(x) all(x == snap_point[i,]))
+                                        }
+                                        parent_index <- sapply(parent_index, which)
+                                        parent_index <- rep(parent_index,each = 2)
+                                        if (head(parent_index,1) != 1) {
+                                          parent_index <- c(1,parent_index)
+                                        } else {
+                                          parent_index <- c(1,parent_index[parent_index!=1])
+                                        }
+                                        if (tail(parent_index,1) != nrow(parent_line)) {
+                                          parent_index <- c(parent_index,nrow(parent_line))
+                                        }else {
+                                          parent_index <- c(parent_index[parent_index!=nrow(parent_line)],nrow(parent_line))
+                                        }
+                                        parent_index <- split(parent_index,rep(1:floor(length(parent_index)/2),each = 2))
+
+                                        parent_line <- lapply(
+                                          parent_index,
+                                          function(x){
+                                            as.matrix(parent_line[x[[1]]:x[[2]], 1:2])
+                                          }
+                                        )
+                                        parent_line <- lapply(parent_line, sf::st_linestring)
+                                        parent_line <- tibble::tibble(geometry = sf::st_as_sfc(parent_line))
+                                        parent_line <- sf::st_as_sf(parent_line)
+                                        sf::st_crs(parent_line) <- sf::st_crs(target_crs)
+                                        return(parent_line)
+                                      })
+      ) |>
+      dplyr::select(-geometry_split) |>
+      tidyr::unnest(geometry) |>
       dplyr::group_by(STRM_VAL) |>
+      dplyr::mutate(sub_grp = 1:dplyr::n()) |>
+      dplyr::group_by(STRM_VAL,sub_grp) |>
+      sf::st_as_sf()
+
+    dem_lines_base <- dem_lines_base0  |>
       dplyr::summarise() |>
       sf::st_buffer(units::as_units(stream_keep_dembuff,"m"),endCapStyle = "FLAT") |>
       dplyr::mutate(area = sf::st_area(geometry))
@@ -339,17 +402,23 @@ process_flowdir <- function(
 
     intersect_pct <- intersect_pct |>
       dplyr::mutate(intersect_area = as.numeric(sf::st_area(geometry)/area)) |>
-      dplyr::select(STRM_VAL,intersect_area) |>
+      dplyr::select(STRM_VAL,sub_grp,intersect_area) |>
       sf::st_drop_geometry()
 
     intersect_thres <- intersect_pct |>
-      dplyr::filter(intersect_area > stream_keep_thresh)
+      dplyr::group_by(STRM_VAL) |>
+      dplyr::mutate(keep = intersect_area > stream_keep_thresh) |>
+      dplyr::mutate(max_keep = dplyr::case_when(
+        all(!keep) ~ 0,
+        T ~ suppressWarnings(min(which(keep)))
+      )) |>
+      dplyr::mutate(keep = sub_grp >= max_keep) |>
+      dplyr::ungroup()
 
-    dem_lines <- sf::read_sf(
-      file.path(temp_dir,"dem_streams_d8_link.shp")
-    ) |>
-      sf::st_set_crs(sf::st_crs(target_crs)) |>
-      dplyr::filter(STRM_VAL %in% intersect_thres$STRM_VAL) |>
+    dem_lines <- dem_lines_base0 |>
+      dplyr::left_join(intersect_thres, by = c("STRM_VAL","sub_grp")) |>
+      dplyr::filter(keep) |>
+      dplyr::select(STRM_VAL) |>
       dplyr::mutate(STRM_VAL = 1)
 
     tstrm2 <- tempfile(fileext = ".shp")

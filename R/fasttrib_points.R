@@ -1134,7 +1134,7 @@ fasttrib_points <- function(
     )
   }
 
-  out <- list(ws_lump = tasks_lump, ws_o = tasks_o, ws_s = tasks_s)
+  out <- list(ws_lump = tasks_lump, ws_s = tasks_s, ws_o = tasks_o)
   return(out)
 }
 

@@ -198,6 +198,7 @@ ihydro_to_ssn <- function(
       parent_line <- sf::st_linestring(parent_line)
       snap_point <- sf::st_point(i[[2]])
       parent_line <- sf::st_snap(parent_line, snap_point, sqrt(res[[1]]))
+      parent_line <- sf::st_coordinates(parent_split$geom)[, 1:2]
 
       parent_index <- apply(parent_line, 1, function(x) all(x == i[[2]]))
       parent_index <- which(parent_index)
@@ -267,85 +268,6 @@ ihydro_to_ssn <- function(
 
   return(edges)
 
-  #
-  #
-  #
-  #
-  # # Points
-  # site_list <- list(
-  #   pred = NULL,
-  #   obs = NULL
-  # )
-  # site_list[["pred"]] <- SSNbler::sites_to_lsn(
-  #   sites = pts,
-  #   edges = edges,
-  #   lsn_path = lsn.path,
-  #   file_name = "pred",
-  #   snap_tolerance = Inf,
-  #   save_local = TRUE,
-  #   overwrite = TRUE,
-  #   verbose = verbose
-  # )
-  #
-  # if (!is.null(obs_obj)) {
-  #   obs_obj <- dplyr::left_join(
-  #     obs_obj,
-  #     dplyr::select(
-  #       stream_points,
-  #       link_id,
-  #       tidyselect::any_of(
-  #         colnames(stream_points)[
-  #           !colnames(stream_points) %in% colnames(obs_obj)
-  #         ]
-  #       )
-  #     ),
-  #     by = "link_id"
-  #   )
-  #
-  #   site_list[["obs"]] <- SSNbler::sites_to_lsn(
-  #     sites = obs_obj,
-  #     edges = edges,
-  #     lsn_path = lsn.path,
-  #     file_name = "pred",
-  #     snap_tolerance = Inf,
-  #     save_local = TRUE,
-  #     overwrite = TRUE,
-  #     verbose = verbose
-  #   )
-  # }
-  #
-  # site.list <- SSNbler::updist_sites(
-  #   sites = site_list,
-  #   edges = edges,
-  #   length_col = "Length",
-  #   save_local = TRUE,
-  #   lsn_path = lsn.path
-  # )
-  #
-  #
-  # site.list <- SSNbler::afv_sites(
-  #   sites = site.list,
-  #   edges = edges,
-  #   afv_col = "afvArea",
-  #   save_local = TRUE,
-  #   lsn_path = lsn.path
-  # )
-  #
-  # # Assemble SSN object
-  # ssn_obj <- SSNbler::ssn_assemble(
-  #   edges = edges,
-  #   lsn_path = lsn.path,
-  #   obs_sites = site.list$obs,
-  #   preds_list = site.list[!"obs" %in% names(site.list)],
-  #   ssn_path = paste0(lsn.path, "/ihydro.ssn"),
-  #   import = TRUE,
-  #   check = TRUE,
-  #   afv_col = "afvArea",
-  #   overwrite = TRUE,
-  #   verbose = verbose
-  # )
-  #
-  # ssn_obj
 }
 
 #' Prepare site data for conversion to lsn format

@@ -109,7 +109,7 @@ tmap_options(component.autoscale = FALSE)
 
 # Parallelization is done through the future package, so all parallel backends
 # should be supported i.e.,:
-plan(multisession(workers = 4))
+#plan(multisession(workers = 4))
 
 ## Generate ex_loc as a temporary directory
 ex_loc <- tempdir()
@@ -148,7 +148,7 @@ hydro_out <- process_flowdir(
   stream_keep_thresh = NULL,
   burn_slope_dist = 500,
   burn_slope_depth = 5,
-  min_length = 3,
+  min_length = 10,
   depression_corr = "breach",
   threshold = 100L,
   return_products = T,
@@ -1086,6 +1086,15 @@ fasttrib_points_time_big <- system.time(
   )
 )
 
+
+to_ssn <- function(
+    ihydro_obj = hydro_out,
+    loi_obj = NULL,
+    loi_cols = NULL,
+    obs_obj = NULL,
+    temp_dir = NULL,
+    verbose = FALSE
+)
 final_attributes_all
 
 attrib_points_time_big <- system.time(

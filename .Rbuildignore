@@ -6,3 +6,5 @@
 ^[.]?air[.]toml$
 ^\.vscode$
 ^data-raw$
+^\.positai$
+^\.claude$
