@@ -133,9 +133,9 @@ prep_weights <- function(
   write_strategy <- match.arg(write_strategy)
 
   n_cores <- n_workers()
-  max_cores_opt <- getOption("parallelly.maxWorkers.localhost")
-  on.exit(options(parallelly.maxWorkers.localhost = max_cores_opt), add = TRUE)
-  options(parallelly.maxWorkers.localhost = n_cores)
+  # max_cores_opt <- getOption("parallelly.maxWorkers.localhost")
+  # on.exit(options(parallelly.maxWorkers.localhost = max_cores_opt), add = TRUE)
+  # options(parallelly.maxWorkers.localhost = n_cores)
 
   target_o_type <- match.arg(target_o_type)
   weighting_scheme <- match.arg(weighting_scheme, several.ok = TRUE)
@@ -468,10 +468,10 @@ compute_point_weights <- function(
   link_id_split <- purrr::map(rast_out, ~ all_points$link_id[.[[1]]])
 
   # ── Compute weights in parallel ─────────────────────────────────────────
-  if (n_cores > 1) {
-    oplan <- future::plan(future::multisession, workers = n_cores)
-    on.exit(future::plan(oplan), add = TRUE)
-  }
+  # if (n_cores > 1) {
+  #   oplan <- future::plan(future::multisession, workers = n_cores)
+  #   on.exit(future::plan(oplan), add = TRUE)
+  # }
 
   target_o_sub <- purrr::map(link_id_split, function(ids) {
     dplyr::filter(target_o, link_id %in% ids) |>
@@ -548,8 +548,7 @@ compute_point_weights <- function(
           ),
           .options = furrr::furrr_options(
             globals = FALSE,
-            seed = NULL,
-            scheduling = 4L
+            seed = NULL
           ),
           point_weight_worker
         )
@@ -583,8 +582,7 @@ compute_point_weights <- function(
         ),
         .options = furrr::furrr_options(
           globals = FALSE,
-          seed = NULL,
-          scheduling = 4L
+          seed = NULL
         ),
         point_weight_worker
       )
@@ -691,7 +689,7 @@ point_weight_worker <- carrier::crate(
           flow_accum = flow_accum,
           weighting_scheme = weighting_scheme_o,
           inv_function = inv_function,
-          clean_tempfiles = FALSE,
+          clean_tempfiles = TRUE,
           return_products = TRUE,
           wrap_return_products = FALSE,
           save_output = FALSE
@@ -712,13 +710,14 @@ point_weight_worker <- carrier::crate(
           ),
           datatype = "FLT4S",
           todisk = TRUE,
-          overwrite = TRUE,
-          gdal = "COMPRESS=NONE"
+          overwrite = TRUE#,
+          #gdal = "COMPRESS=NONE"
         )
       }
 
       rm(hw_o)
       unlink(hw_dir, recursive = TRUE, force = TRUE)
+      gr <- gc(verbose = FALSE)
       NULL
     })
   }
@@ -736,7 +735,7 @@ drain_weight_rasters <- function(
   future_status <- future::futureOf(future_proc)
   pattern <- paste0(weighting_scheme_o, collapse = "|")
 
-  write_batch <- function(min_age = 60) {
+  write_batch <- function(min_age = 5) {
     fl <- list.files(temp_dir, full.names = TRUE)
     fl <- fl[grepl(pattern, fl)]
     if (min_age > 0) {
@@ -776,7 +775,7 @@ drain_weight_rasters <- function(
 
   while (!future::resolved(future_status)) {
     Sys.sleep(0.2)
-    write_batch(60)
+    write_batch(5)
   }
 
   Sys.sleep(5)

@@ -17,11 +17,11 @@
 #'
 
 ihydro_to_ssn <- function(
-  ihydro_obj,
-  obs = NULL,
-  pred = NULL,
-  temp_dir = NULL,
-  verbose = FALSE
+    ihydro_obj,
+    obs = NULL,
+    pred = NULL,
+    temp_dir = NULL,
+    verbose = FALSE
 ) {
   check_ihydro(ihydro_obj)
 
@@ -110,10 +110,10 @@ ihydro_to_ssn <- function(
 #' @return A sf object of edges in lsn format
 #' @noRd
 .prep_edges <- function(
-  ihydro_obj,
-  n_cores = 1L,
-  temp_dir = NULL,
-  verbose = FALSE
+    ihydro_obj,
+    n_cores = 1L,
+    temp_dir = NULL,
+    verbose = FALSE
 ) {
   check_ihydro(ihydro_obj)
 
@@ -135,17 +135,17 @@ ihydro_to_ssn <- function(
 
   edges <- SSNbler::lines_to_lsn(
     streams = lns,
-    lsn_path = lsn.path,
+    lsn_path = temp_dir,
     check_topology = TRUE,
-    snap_tolerance = sqrt(res[[1]]),
-    topo_tolerance = sqrt(res[[1]]),
+    snap_tolerance = sqrt(res[[1]])/8,
+    topo_tolerance = sqrt(res[[1]])/8,
     overwrite = TRUE,
     use_parallel = n_cores > 1,
     no_cores = n_cores,
     verbose = verbose
   )
 
-  err_fl <- file.path(lsn.path, "node_errors.gpkg")
+  err_fl <- file.path(temp_dir, "node_errors.gpkg")
   if (file.exists(err_fl)) {
     if (verbose) {
       message("Attempting to fix topology errors")
@@ -155,7 +155,7 @@ ihydro_to_ssn <- function(
 
     ft <- file.remove(err_fl)
 
-    ers_buff <- sf::st_buffer(ers, res[[1]] / 2)
+    ers_buff <- sf::st_buffer(ers, res[[1]] / 4)
     ers_lns <- suppressWarnings(sf::st_intersection(lns, ers_buff))
     ers_buff <- suppressWarnings(sf::st_cast(ers_buff, "LINESTRING"))
     ers_pnt <- suppressWarnings(sf::st_intersection(lns, ers_buff))
@@ -197,8 +197,8 @@ ihydro_to_ssn <- function(
       parent_line <- sf::st_coordinates(parent_split$geom)[, 1:2]
       parent_line <- sf::st_linestring(parent_line)
       snap_point <- sf::st_point(i[[2]])
-      parent_line <- sf::st_snap(parent_line, snap_point, sqrt(res[[1]]))
-      parent_line <- sf::st_coordinates(parent_split$geom)[, 1:2]
+      parent_line <- sf::st_snap(parent_line, snap_point, sqrt(res[[1]])/16)
+      parent_line <- sf::st_coordinates(parent_line)[, 1:2]
 
       parent_index <- apply(parent_line, 1, function(x) all(x == i[[2]]))
       parent_index <- which(parent_index)
@@ -223,29 +223,30 @@ ihydro_to_ssn <- function(
       lns <- dplyr::bind_rows(lns, parent_split)
     }
 
-    lns_inter <- sf::st_snap(lns, sf::st_union(lns), sqrt(res))
+    #lns_inter <- sf::st_snap(lns, sf::st_union(lns), sqrt(res[[1]])/16)
 
     # Edges
     edges <- SSNbler::lines_to_lsn(
-      streams = lns_inter,
-      lsn_path = lsn.path,
+      streams = lns,
+      lsn_path = temp_dir,
       check_topology = TRUE,
-      snap_tolerance = sqrt(res[[1]]),
-      topo_tolerance = sqrt(res[[1]]),
+      snap_tolerance = sqrt(res[[1]])/8,
+      topo_tolerance = sqrt(res[[1]])/8,
       overwrite = TRUE,
       use_parallel = n_cores > 1,
       no_cores = n_cores,
-      verbose = FALSE
+      verbose = verbose
     )
 
     if (file.exists(err_fl)) {
       ers2 <- sf::read_sf(err_fl)
+      ers2 <- tibble::as_tibble(ers2)
 
       if (nrow(ers2) > 0) {
-        cli::cli_abort(c(
-          "The following topology errors could not be resolved:",
-          ers2
-        ))
+        rlang::abort(
+          message = "The following topology errors could not be resolved:",
+          body = c(ers2 |> capture.output())
+        )
       }
     }
   }
@@ -253,7 +254,7 @@ ihydro_to_ssn <- function(
   edges <- SSNbler::updist_edges(
     edges = edges,
     save_local = TRUE,
-    lsn_path = lsn.path,
+    lsn_path = temp_dir,
     calc_length = TRUE,
     verbose = verbose
   )
@@ -263,7 +264,7 @@ ihydro_to_ssn <- function(
     infl_col = "area",
     segpi_col = "areaPI",
     afv_col = "afvArea",
-    lsn_path = lsn.path
+    lsn_path = temp_dir
   )
 
   return(edges)
@@ -277,9 +278,9 @@ ihydro_to_ssn <- function(
 #' @return A list of data frames for observed and predicted sites, with stream link attributes joined
 #' @noRd
 .prep_sites <- function(
-  ihydro_obj,
-  obs = NULL,
-  pred = NULL
+    ihydro_obj,
+    obs = NULL,
+    pred = NULL
 ) {
   site_list <- list(
     obs = obs,
@@ -344,9 +345,9 @@ ihydro_to_ssn <- function(
 #' @return A data frame of stream points with attributes joined from the iHydro object
 #' @noRd
 .prep_ihydro_points <- function(
-  ihydro_obj,
-  keep_site_id_col = TRUE,
-  keep_dir_cols = TRUE
+    ihydro_obj,
+    keep_site_id_col = TRUE,
+    keep_dir_cols = TRUE
 ) {
   site_id_col <- read_ihydro(ihydro_obj, "site_id_col")[[1]]
 
