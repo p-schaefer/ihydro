@@ -425,7 +425,6 @@ rand_id <- function(n = 1, d = 12) {
 #' @keywords internal
 #' @noRd
 unnest_catchments <- function(input) {
-  browser()
   fp <- read_ihydro(input, "us_flowpaths")
   fp$connected <- 1
 
@@ -455,7 +454,7 @@ unnest_catchments <- function(input) {
     dplyr::group_by(unn_group) |>
     dplyr::mutate(
       unn_group = rand_id(1),
-      unn_group_size = n()
+      unn_group_size = dplyr::n()
     ) |>
     dplyr::ungroup()
 

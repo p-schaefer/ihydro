@@ -656,21 +656,22 @@ point_groups <- hydro_out$snapped_points %>%
 tm_shape(hydro_out$subbasins) +
   tm_polygons(
     fill = "white",
-    fill_alpha = 0.2,
+    col_alpha = 0.5,
     fill.legend = tm_legend_hide()
   ) +
   tm_shape(hydro_out$stream_lines) +
   tm_lines(
     col = "blue",
-    col_alpha = 0.3,
+    col_alpha = 1,
     col.legend = tm_legend_hide(),
-    lwd = 2
+    lwd = 1
   ) +
   tm_shape(point_groups) +
   tm_dots(
+    col_alpha = 1,
     fill = "group",
-    fill.scale = tm_scale(values = "hcl.dark2"),
-    size = 0.45
+    fill.scale = tm_scale_categorical(values = "hcl.dark2"),
+    size = 0.75
   ) +
   tm_layout(legend.outside = TRUE)
 ```
@@ -905,109 +906,29 @@ ihydro_layers(hydro_out_sparse)
 
 New research is showing that the presence of particular features on the landscape is not always sufficient to predict the in-stream response to those features, and the location of those features relative to the locations of streams and areas of higher flow accumulation is very important (Peterson ***et al.*** 2011).
 
-***ihydro*** provides two functions for calculating weighted spatial summaries: `attrib_points()` and `fasttrib_points()`. `attrib_points()` uses the [hydroweight](https://github.com/GLFC-WET/hydroweight) package to calculate weighted spatial summaries of supplied loi layers. It can be used to examine the resulting distance-weighted rasters and distance-weighted loi layers. However, `attrib_points()` is slow, so `fasttrib_points()` is available for improved performance for larger datasets.
+***ihydro*** provides functions for calculating weighted spatial summaries: `prep_weights()` and `fasttrib_points()`. 
 
 ### 6.1 At specific sampling points
 
-The `attrib_points()` function uses the [hydroweight](https://github.com/GLFC-WET/hydroweight) package and can calculate and return weighted attributes for any points identified either through supplied sampling points and/or arbitrary link_ids. The returned products can be helpful in visualizing how the final weighted attributes are derived.
-
 ```{r, fig.width = 7, fig.height = 7, message = F, error = F, warning = F}
-attrib_points_time_small <- system.time(
-  final_attributes_sub_slow <- attrib_points(
-    input = hydro_out,
-    out_filename = file.path(tempdir(), "attrib_points1.csv"),
-    loi_file = output_filename_loi,
-    loi_cols = NULL,
-    sample_points = c("1", "25", "80"),
-    link_id = NULL,
-    clip_region = NULL,
-    target_o_type = c("point"),
-    weighting_scheme = c("lumped", "iFLO", "iFLS", "HAiFLO", "HAiFLS"),
-    loi_numeric_stats = c(
-      "distwtd_mean",
-      "distwtd_sd",
-      "mean",
-      "sd",
-      "median",
-      "min",
-      "max",
-      "sum"
-    ),
-    inv_function = function(x) {
-      (x * 0.001 + 1)^-1
-    },
-    temp_dir = NULL,
-    return_products = T,
-    verbose = T
-  )
+final_attributes_sub <- fasttrib_points(
+  input = hydro_out,
+  out_filename = file.path(tempdir(), "sample_points_wgtattr.csv"),
+  loi_file = output_filename_loi, # specify loi file, if NULL, function will look for loi in 'input'
+  loi_cols = NULL, # Specify loi columns to use, if NULL, all will be used
+  iDW_file = NULL, # Leaving this as NULL will look for iDW in 'input' and calculate any not available
+  store_iDW = T, # This will save the distance weights to the input or iDW_file if it is specified
+  sample_points = c("1", "25", "80"),
+  link_id = NULL,
+  target_o_type = c("point"),
+  weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"), #
+  loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
+  inv_function = function(x) {
+    (x * 0.001 + 1)^-1
+  },
+  # temp_dir=NULL,
+  verbose = T
 )
-
-
-final_attributes_sub_slow
-```
-
-We can access the weighting layers and weighted attribute layers (if return_products==T) of the `attrib_points()` output.
-
-```{r, fig.width = 7, fig.height = 7, message = FALSE, error = FALSE, warning = FALSE}
-plot(
-  rast(
-    list(
-      rast(final_attributes_sub_slow$products[[2]]$iFLS) %>%
-        setNames("iFLS Weighting"),
-      log10(rast(final_attributes_sub_slow$products[[2]]$HAiFLO)) %>%
-        setNames("log10-HAiFLO Weighting"),
-      rast(final_attributes_sub_slow$products[[2]]$iFLS.loi_dist_rast_num) %>%
-        setNames("iFLS Weighted Slope"),
-      log10(rast(
-        final_attributes_sub_slow$products[[2]]$HAiFLO.loi_dist_rast_cat
-      )[[1]]) %>%
-        setNames("log10-HAiFLO Weighted Landcover Class 1")
-    )
-  ),
-  col = viridis::viridis(101),
-  axes = F
-)
-```
-
-The `fasttrib_points()` function is faster for larger data sets, more loi, and more sampling points. For very small datasets `attrib_points()` may be faster.
-
-```{r, fig.width = 7, fig.height = 7, message = F, error = F, warning = F}
-fasttrib_points_time_small <- system.time(
-  final_attributes_sub <- fasttrib_points(
-    input = hydro_out,
-    out_filename = file.path(tempdir(), "sample_points_wgtattr.csv"),
-    loi_file = output_filename_loi, # specify loi file, if NULL, function will look for loi in 'input'
-    loi_cols = NULL, # Specify loi columns to use, if NULL, all will be used
-    iDW_file = NULL, # Leaving this as NULL will look for iDW in 'input' and calculate any not available
-    store_iDW = T, # This will save the distance weights to the input or iDW_file if it is specified
-    sample_points = c("1", "25", "80"),
-    link_id = NULL,
-    target_o_type = c("point"),
-    weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"), #
-    loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
-    inv_function = function(x) {
-      (x * 0.001 + 1)^-1
-    },
-    # temp_dir=NULL,
-    verbose = T
-  )
-)
-
-attr1 <- final_attributes_sub_slow %>%
-  dplyr::select(any_of(colnames(final_attributes_sub)), -link_id, -site_id)
-
-attr2 <- final_attributes_sub %>%
-  dplyr::select(
-    any_of(colnames(final_attributes_sub_slow)),
-    -link_id,
-    -site_id
-  ) %>%
-  dplyr::select(any_of(colnames(final_attributes_sub)))
-
-# Note that fasttrib_points() uses exactextractr::exact_extract() which uses 32-bit precision,
-# so there may be some small differences in the values, but they should be very close.
-# fastrib_points outputs align with Hmisc weighted mean, variance and sd calculations
-all.equal(attr1, attr2)
 
 final_attributes_sub
 ```
@@ -1026,7 +947,6 @@ final_attributes <- fasttrib_points(
   store_iDW = T,
   sample_points = hydro_out$snapped_points$site_id, # here we specify all sampling points
   link_id = NULL,
-  target_o_type = c("point"),
   weighting_scheme = c("lumped", "iFLS", "iFLO", "HAiFLO", "HAiFLS"),
   loi_numeric_stats = c("mean", "sd", "min", "max"),
   inv_function = function(x) {
@@ -1061,140 +981,27 @@ dw_time <- system.time(
   )
 )
 
-
-fasttrib_points_time_big <- system.time(
+fasttrib_points_time <- system.time(
   final_attributes_all <- fasttrib_points(
     input = hydro_out,
     out_filename = "sample_points_wgtattr.csv",
     loi_file = output_filename_loi,
     loi_cols = NULL,
-    iDW_file = file.path(tempfile(), "iDW_temp.gpkg"),
-    #iDW_file =  file.path(tempdir(),"Processed_HW_out.gpkg"), # to use previously calculated weights
+    iDW_file =  as_ihydro(file.path(tempdir(),"Processed_HW_out.gpkg")), # use previously calculated weights
     store_iDW = T,
     sample_points = NULL, # by specifying neither sample_points nor link_id
     link_id = NULL, #   we get all reaches
-    target_o_type = c("segment_point"),
     weighting_scheme = c("lumped", "iFLS", "iFLO", "HAiFLO", "HAiFLS"),
     loi_numeric_stats = c("mean", "sd", "min", "max"),
-    inv_function = function(x) {
-      (x * 0.001 + 1)^-1
-    },
     temp_dir = NULL,
     verbose = F
   )
 )
 
+paste0("prep_weights() took ",round(dw_time[3] / 60, 2) ," minues with ",future::nbrOfWorkers()," cores.")
 
-to_ssn <- function(
-  ihydro_obj = hydro_out,
-  loi_obj = NULL,
-  loi_cols = NULL,
-  obs_obj = NULL,
-  temp_dir = NULL,
-  verbose = FALSE
-) {
-  final_attributes_all
-}
+paste0("fasttrib_points() took ",round(fasttrib_points_time[3] / 60, 2) ," minues with ",future::nbrOfWorkers()," cores.")
 
-attrib_points_time_big <- system.time(
-  final_attributes_slow <- attrib_points(
-    input = hydro_out,
-    out_filename = file.path(tempdir(), "attrib_points1.csv"),
-    loi_file = output_filename_loi,
-    loi_cols = NULL,
-    sample_points = NULL,
-    link_id = NULL,
-    clip_region = NULL,
-    target_o_type = c("segment_point"),
-    weighting_scheme = c("lumped", "iFLO", "iFLS", "HAiFLO", "HAiFLS"),
-    loi_numeric_stats = c(
-      "distwtd_mean",
-      "distwtd_sd",
-      "mean",
-      "sd",
-      "min",
-      "max"
-    ),
-    inv_function = function(x) {
-      (x * 0.001 + 1)^-1
-    },
-    temp_dir = NULL,
-    return_products = F,
-    verbose = F
-  )
-)
-
-final_attributes_slow
-
-pmap(
-  list(
-    list(
-      "attrib_points()",
-      "fasttrib_points()",
-      "attrib_points()",
-      "fasttrib_points()"
-    ),
-    list(
-      attrib_points_time_small,
-      fasttrib_points_time_small,
-      attrib_points_time_big,
-      fasttrib_points_time_big
-    ),
-    list(
-      final_attributes_sub_slow %>%
-        select(
-          -any_of("products"),
-          -any_of("link_id"),
-          -any_of("site_id"),
-          -any_of("status")
-        ),
-      final_attributes_sub %>%
-        select(
-          -any_of("products"),
-          -any_of("link_id"),
-          -any_of("site_id"),
-          -any_of("status")
-        ),
-      final_attributes_slow %>%
-        select(
-          -any_of("products"),
-          -any_of("link_id"),
-          -any_of("site_id"),
-          -any_of("status")
-        ),
-      final_attributes_all %>%
-        select(
-          -any_of("products"),
-          -any_of("link_id"),
-          -any_of("site_id"),
-          -any_of("status")
-        )
-    )
-  ),
-  function(.z, .x, .y) {
-    paste0(
-      .z,
-      " took ",
-      round(.x[[3]] / 60, 2),
-      " min to calculate for ",
-      nrow(.y),
-      " reaches with ",
-      ncol(.y),
-      " attributes using ",
-      nbrOfWorkers(),
-      " cores."
-    )
-  }
-)
-
-paste0(
-  round(dw_time[[3]] / 60, 2),
-  " min to calculate distance weights for ",
-  nrow(final_attributes_all),
-  " reaches using ",
-  nbrOfWorkers(),
-  " cores."
-)
 ```
 
 [Back to top](#1-introduction)
