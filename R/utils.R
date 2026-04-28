@@ -283,6 +283,7 @@ target_id_fun <- function(
   sample_points = NULL,
   link_id = NULL
 ) {
+  if (is.character(db_fp)) db_fp <- as_ihydro(db_fp)
   site_id_col <- read_ihydro(db_fp, "site_id_col")$site_id_col
 
   all_points <- read_ihydro(db_fp, "stream_links_attr") |>

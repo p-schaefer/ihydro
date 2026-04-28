@@ -386,7 +386,7 @@ point_catchments <- get_catchment(
 
 tm_shape(bind_rows(subbasin_catchments, point_catchments)) +
   tm_polygons(
-    col = "white",
+    col = "black",
     fill_alpha = 0.2,
     fill.legend = tm_legend_hide(),
     lwd = 4

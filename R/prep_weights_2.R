@@ -107,13 +107,9 @@
 prep_weights <- function(
   input,
   output_filename,
-  weighting_scheme = c(
-    "iFLS",
-    "HAiFLS",
-    "iFLO",
-    "HAiFLO"
-  ),
+  weighting_scheme = c("iFLS","HAiFLS","iFLO","HAiFLO"),
   inv_function = function(x) (x * 0.001 + 1)^-1,
+  return_products = FALSE,
   temp_dir = NULL,
   verbose = FALSE
 ) {
@@ -145,7 +141,7 @@ prep_weights <- function(
     if (lyr == "dem_final") {
       dem_crs <- terra::crs(targ_rast)
 
-      if (grepl("iFLO", weighting_scheme)) {
+      if (any(grepl("iFLO", weighting_scheme))) {
         target_O <- dplyr::left_join(
           read_ihydro(input, "stream_links"),
           read_ihydro(input, "stream_links_attr"),
@@ -192,7 +188,7 @@ prep_weights <- function(
     )
 
   # ── Stream-targeted weights (iFLS, HAiFLS) ──────────────────────────────
-  if (grepl("iFLS", weighting_scheme)) {
+  if (any(grepl("iFLS", weighting_scheme))) {
     target_S <- terra::writeRaster(
       read_ihydro(input, "dem_streams_d8_sub"),
       file.path(temp_dir, "dem_streams_d8_sub.tif"),
@@ -209,7 +205,7 @@ prep_weights <- function(
     )
 
     iFLS <- terra::rast(file.path(temp_dir, "wbt_dist_to_stream.tif"))
-    iFLS_inv <- apply_inverse(iFLS, "iFLS")
+    iFLS_inv <- terra::app(iFLS, fun = inv_function)
     terra::crs(iFLS_inv) <- dem_crs
     names(iFLS_inv) <- "iFLS"
 
@@ -217,7 +213,7 @@ prep_weights <- function(
       write_raster_gpkg(iFLS_inv, output_filename)
     }
 
-    if ("HAiFLS" %in% weighting_scheme_s) {
+    if ("HAiFLS" %in% weighting_scheme) {
       HAiFLS_inv <- iFLS_inv * flow_accum
       HAiFLS_inv <- terra::mask(HAiFLS_inv, target_S, maskvalues = 1)
       names(HAiFLS_inv) <- "HAiFLS"
@@ -226,7 +222,7 @@ prep_weights <- function(
   }
 
   # ── Outlet-targeted weights (iFLO, HAiFLO) ──────────────────────────────
-  if (grepl("iFLO", weighting_scheme)) {
+  if (any(grepl("iFLO", weighting_scheme))) {
     whitebox::wbt_downslope_distance_to_stream(
       dem = file.path(temp_dir, "dem_final.tif"),
       streams = file.path(temp_dir, "target_O.tif"),
@@ -235,7 +231,7 @@ prep_weights <- function(
     )
 
     iFLO <- terra::rast(file.path(temp_dir, "wbt_dist_to_outlet.tif"))
-    iFLO_inv <- apply_inverse(iFLO, "iFLO")
+    iFLO_inv <- terra::app(iFLO, fun = inv_function)
     terra::crs(iFLO_inv) <- dem_crs
     names(iFLO_inv) <- "iFLO"
 
@@ -243,7 +239,7 @@ prep_weights <- function(
       write_raster_gpkg(iFLO_inv, output_filename)
     }
 
-    if ("HAiFLO" %in% weighting_scheme_s) {
+    if ("HAiFLO" %in% weighting_scheme) {
       HAiFLO_inv <- iFLO_inv * flow_accum
       names(HAiFLO_inv) <- "HAiFLO"
       write_raster_gpkg(HAiFLO_inv, output_filename)
@@ -252,7 +248,7 @@ prep_weights <- function(
 
   sf::write_sf(
     data.frame(
-      inv_function = deparse(substitute(inv_function)),
+      inv_function = trimws(deparse(substitute(inv_function))[3])
     ),
     output_filename,
     layer = "weight_meta",
@@ -260,4 +256,17 @@ prep_weights <- function(
     delete_layer = FALSE,
     delete_dsn = FALSE
   )
+
+  # ── Return ──────────────────────────────────────────────────────────────
+  output <- list(outfile = output_filename)
+
+  if (return_products) {
+    rast_list <- lapply(
+      setNames(weighting_scheme,weighting_scheme),
+      function(x) read_ihydro(as_ihydro(output_filename),x)
+    )
+    output <- c(output, rast_list)
+  }
+
+  structure(output, class = "ihydro")
 }

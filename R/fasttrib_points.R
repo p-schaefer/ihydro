@@ -169,27 +169,24 @@
 #'
 
 fasttrib_points <- function(
-  input,
-  out_filename,
-  loi_file = NULL,
-  loi_cols = NULL,
-  iDW_file = NULL,
-  sample_points = NULL,
-  link_id = NULL,
-  weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"),
-  loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
-  mem_fraction = 0.5,
-  temp_dir = NULL,
-  verbose = FALSE
+    input,
+    out_filename,
+    loi_file = NULL,
+    loi_cols = NULL,
+    iDW_file = NULL,
+    sample_points = NULL,
+    link_id = NULL,
+    weighting_scheme = c("lumped","iFLS","HAiFLS","iFLO","HAiFLO"),
+    loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
+    mem_fraction = 0.5,
+    temp_dir = NULL,
+    verbose = FALSE,
+    ...
 ) {
   # ─ Validate inputs ───────────────────────────
   check_ihydro(input)
-  check_ihydro(iDW_file)
+
   stopifnot(mem_fraction < 0.9 | mem_fraction > 0.1)
-  weighting_scheme <- match.arg(
-    weighting_scheme,
-    several.ok = TRUE
-  )
 
   loi_numeric_stats <- match.arg(
     loi_numeric_stats,
@@ -201,6 +198,44 @@ fasttrib_points <- function(
   input_path <- input$outfile
   temp_dir <- ensure_temp_dir(temp_dir)
   n_cores <- n_workers()
+
+  # ─ Process iDW ───────────────────────
+
+  if (any(weighting_scheme != "lumped")){
+    if (is.null(iDW_file)) {
+      temp_dir_sub <- file.path(temp_dir,basename(tempfile()))
+      dir.create(temp_dir_sub,showWarnings = F,recursive = T)
+      on.exit(unlink(temp_dir_sub,recursive = T, force = T), add = TRUE)
+      args <- list(...)
+      inv_function <- args$inv_function
+      if (is.null(inv_function)) {
+        inv_function <- function(x) (x * 0.001 + 1)^-1
+      }
+
+      fun_dep <- trimws(deparse(substitute(inv_function))[3])
+
+      if (verbose) {
+        cli::cli_alert_info(c(
+          "{.arg iDW_file} is Null. Calculating temporary iDW layers using: {.var {fun_dep}}.\n",
+          "To use a different inverse distance function specify {.arg inv_function} in {.fun fasttrib_points}\n",
+          "or generate a permanent iDW file with {.fun prep_weights}"
+        ))
+      }
+
+
+      iDW_file <- file.path(temp_dir,"temp_idw.gpkg")
+      iDW_file <- prep_weights(
+        input = input,
+        output_filename = iDW_file,
+        weighting_scheme = weighting_scheme[weighting_scheme != "lumped"],
+        temp_dir = temp_dir_sub,
+        verbose = FALSE,
+        inv_function
+      )
+    }
+
+    check_ihydro(iDW_file)
+  }
 
   # ─ Configure external tools ───────────────────────
   wbt_opt_orig <- whitebox::wbt_options()
@@ -248,29 +283,28 @@ fasttrib_points <- function(
   # ─ Resolve iDW file and prepare weights ─────────────────
   idw_layers <- ihydro_layers(iDW_file)$layer_name
   missing_layers <- setdiff(weighting_scheme, idw_layers)
+  missing_layers <- missing_layers[missing_layers != "lumped"]
   if (length(missing_layers) > 0L) {
-    if (verbose) {
       cli::cli_abort(c(
-        "The following weighting layers are missing from iDW_file and will be computed: ",
-        "i" = "{.val {missing_layers}}"
+        "The following weighting layers are missing from iDW_file: ",
+        "x" = "{.val {missing_layers}}"
       ))
-    }
   }
 
   # ─ Build subbasin lookup ────────────────────────
-  unnest_catchment <- sf::read_sf(input, "unnest_catchment")
+  #unnest_catchment <- sf::read_sf(input, "unnest_catchment")
   site_id_col <- read_ihydro(input, "site_id_col")[[1]]
 
   subb_ids <- read_ihydro(input, "stream_links_attr") |>
     dplyr::filter(link_lngth > 0) |> # small catchments without streams
     dplyr::filter(link_id %in% target_ids$link_id) |> # small catchments without streams
-    dplyr::select(link_id, tidyselect::any_of(site_id_col), USChnLn_To) |>
-    dplyr::left_join(
-      dplyr::mutate(unnest_catchment, link_id = as.character(link_id)),
-      by = c("link_id")
-    )
+    dplyr::select(link_id, tidyselect::any_of(site_id_col), USChnLn_To) #|>
+    #dplyr::left_join(
+    #  dplyr::mutate(unnest_catchment, link_id = as.character(link_id)),
+    #  by = c("link_id")
+    #)
 
-  subb_ids <- subb_ids[!is.na(subb_ids$unn_group), ]
+  #subb_ids <- subb_ids[!is.na(subb_ids$unn_group), ]
 
   subb_lookup <- ihydro::read_ihydro(
     input,
@@ -304,7 +338,7 @@ fasttrib_points <- function(
     loi_rast_input = loi_file,
     numb_rast = numb_rast,
     cat_rast = cat_rast,
-    iDW_rast_input = iDW_out,
+    iDW_rast_input = iDW_file,
     iDW_cols = weighting_scheme,
     max_cells_in_memory = max_cells_in_memory,
     n_cores = n_cores,
@@ -362,11 +396,11 @@ fasttrib_points <- function(
   extract_value_comb <- list()
   extract_value_nms <- names(extract_value)
   ws_s_nms <- extract_value_nms[grepl("^ws_s\\.", extract_value_nms)]
-  ws_o_nms <- extract_value_nms[grepl("^ws_o\\.", extract_value_nms)]
+  #ws_o_nms <- extract_value_nms[grepl("^ws_o\\.", extract_value_nms)]
   ws_lump_nms <- extract_value_nms[grepl("^ws_lump\\.", extract_value_nms)]
 
   extract_value_comb$ws_s <- dplyr::bind_rows(extract_value[ws_s_nms])
-  extract_value_comb$ws_o <- dplyr::bind_rows(extract_value[ws_o_nms])
+  #extract_value_comb$ws_o <- dplyr::bind_rows(extract_value[ws_o_nms])
   extract_value_comb$ws_lump <- dplyr::bind_rows(extract_value[ws_lump_nms])
 
   if (length(ws_s_nms) > 0) {
@@ -384,13 +418,13 @@ fasttrib_points <- function(
     )
   }
 
-  if (length(ws_o_nms) > 0) {
-    extract_value_comb$ws_o <- extract_value_comb$ws_o |>
-      dplyr::left_join(
-        dplyr::select(subb_ids, link_id, unn_group),
-        by = c("link_id_otarget" = "link_id")
-      )
-  }
+  # if (length(ws_o_nms) > 0) {
+  #   extract_value_comb$ws_o <- extract_value_comb$ws_o |>
+  #     dplyr::left_join(
+  #       dplyr::select(subb_ids, link_id), #unn_group
+  #       by = c("link_id_otarget" = "link_id")
+  #     )
+  # }
 
   # Summarize catchment attributes and join with target IDs
   result <- .summarize_catchment(
@@ -406,10 +440,6 @@ fasttrib_points <- function(
     dplyr::left_join(
       result,
       by = "link_id"
-    ) |>
-    dplyr::mutate(
-      status = "Complete",
-      .after = 2
     )
 
   return(result)
@@ -441,19 +471,19 @@ fasttrib_points <- function(
 #' Extract raster attributes
 #' @noRd
 .extract_fun <- function(
-  all_rasts,
-  subbasins,
-  x_cols = NULL,
-  weight_cols = NULL,
-  #sqweight_cols = NULL,
-  default_value = NA_real_,
-  default_weight = NA_real_,
-  fun,
-  quantiles = NULL,
-  max_cells_in_memory = 3e+07,
-  include_count = FALSE,
-  n_cores = 1L,
-  temp_dir_sub = NULL
+    all_rasts,
+    subbasins,
+    x_cols = NULL,
+    weight_cols = NULL,
+    #sqweight_cols = NULL,
+    default_value = NA_real_,
+    default_weight = NA_real_,
+    fun,
+    quantiles = NULL,
+    max_cells_in_memory = 3e+07,
+    include_count = FALSE,
+    n_cores = 1L,
+    temp_dir_sub = NULL
 ) {
   if (is.null(x_cols) && is.null(weight_cols)) {
     return(NULL)
@@ -837,31 +867,31 @@ fasttrib_points <- function(
 #' Create subbasin extraction plan
 #' @noRd
 .extract_planner <- function(
-  input,
-  subb_ids,
-  loi_rast_input,
-  numb_rast,
-  cat_rast,
-  iDW_rast_input,
-  iDW_cols,
-  max_cells_in_memory = 3e+07,
-  n_cores = 1L,
-  chunks_per_worker = 1L,
-  fun = c(
-    "mean",
-    "sd",
-    "var",
-    "cv",
-    "min",
-    "max",
-    "sum",
-    "count",
-    "median",
-    "quantile"
-  ),
-  quantiles = NULL,
-  temp_dir = NULL,
-  verbose = FALSE
+    input,
+    subb_ids,
+    loi_rast_input,
+    numb_rast,
+    cat_rast,
+    iDW_rast_input,
+    iDW_cols,
+    max_cells_in_memory = 3e+07,
+    n_cores = 1L,
+    chunks_per_worker = 1L,
+    fun = c(
+      "mean",
+      "sd",
+      "var",
+      "cv",
+      "min",
+      "max",
+      "sum",
+      "count",
+      "median",
+      "quantile"
+    ),
+    quantiles = NULL,
+    temp_dir = NULL,
+    verbose = FALSE
 ) {
   safe_kmeans <- function(x, centers, ...) {
     x0 <- x
@@ -930,7 +960,7 @@ fasttrib_points <- function(
 
   tasks <- dplyr::left_join(
     tasks,
-    dplyr::select(subb_ids, link_id, unn_group),
+    dplyr::select(subb_ids, link_id), # unn_group
     by = "link_id"
   )
 
@@ -1060,11 +1090,11 @@ fasttrib_points <- function(
 #' @return Tibble with one row per catchment (link_id_otarget), columns for each summary
 #' @noRd
 .summarize_catchment <- function(
-  extract_value,
-  weighting_scheme,
-  loi_numeric_stats,
-  numeric_vars,
-  cat_vars
+    extract_value,
+    weighting_scheme,
+    loi_numeric_stats,
+    numeric_vars,
+    cat_vars
 ) {
   # Helper: Pivot and clean
   clean_data <- function(df) {
@@ -1158,7 +1188,7 @@ fasttrib_points <- function(
       }
     }
     # S-targeted iDW
-    for (ws in intersect(weighting_scheme, c("iFLS", "HAiFLS"))) {
+    for (ws in intersect(weighting_scheme, c("iFLS", "HAiFLS","iFLO", "HAiFLO"))) {
       for (var in numeric_vars) {
         mean_col <- paste0("weighted_mean.", var, ".", ws)
         var_col <- paste0("weighted_variance.", var, ".", ws)

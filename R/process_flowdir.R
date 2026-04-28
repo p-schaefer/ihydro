@@ -516,7 +516,7 @@ process_flowdir <- function(
       stats::setNames(raster_files, raster_files),
       function(f) terra::wrap(terra::rast(file.path(temp_dir, f)))
     )
-    output <- c(rast_list, output)
+    output <- c(output, rast_list)
   } else {
     clean_temp_files(temp_dir)
   }

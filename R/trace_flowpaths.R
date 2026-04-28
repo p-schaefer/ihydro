@@ -147,6 +147,7 @@ trace_flowpaths <- function(
   if (return_products) {
     input$us_flowpaths <- read_ihydro(input, "us_flowpaths")
     input$ds_flowpaths <- read_ihydro(input, "ds_flowpaths")
+    input$unnest_catchments <- read_ihydro(input, "unnest_catchment")
   }
 
   structure(input, class = "ihydro")
@@ -424,6 +425,7 @@ rand_id <- function(n = 1, d = 12) {
 #' @keywords internal
 #' @noRd
 unnest_catchments <- function(input) {
+  browser()
   fp <- read_ihydro(input, "us_flowpaths")
   fp$connected <- 1
 
