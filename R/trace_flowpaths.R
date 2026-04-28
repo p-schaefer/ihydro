@@ -23,6 +23,7 @@
 #' - `us_flowpaths`: Upstream flowpaths for each link.
 #' - `funcon_pwise_dist`: Pairwise flow-unconnected distances between links (if `pwise_dist = TRUE`).
 #' - `fcon_pwise_dist`: Pairwise flow-connected distances between links (if `pwise_dist = TRUE`).
+#' - `unnest_catchment`: Unnested catchment areas such that link_ids in each unn_group* do not contain any overlapping subbasin.
 #' The function returns an `ihydro` object containing references to the flowpath tables, which can be accessed using [read_ihydro()] or listed with [ihydro_layers()].
 #'
 #' @export
@@ -135,6 +136,11 @@ trace_flowpaths <- function(
       pwise_all_links = pwise_all_links
     )
   }
+
+  if (verbose) {
+    message("Calculating unnested catchments")
+  }
+  unnest_catchments(input)
 
   clean_temp_files(temp_dir)
 
@@ -407,4 +413,58 @@ trace_flowpath_fn <- function(
     )
 
   invisible(db_loc)
+}
+
+#' Generate a short random ID
+#' @noRd
+rand_id <- function(n = 1, d = 12) {
+  paste0(replicate(d, sample(c(LETTERS, letters, 0:9), n, TRUE)), collapse = "")
+}
+
+#' @keywords internal
+#' @noRd
+unnest_catchments <- function(input) {
+  fp <- read_ihydro(input, "us_flowpaths")
+  fp$connected <- 1
+
+  fp <- tidyr::pivot_wider(
+    fp,
+    id_cols = "pour_point_id",
+    names_from = "origin_link_id",
+    values_from = "connected",
+    values_fill = 0
+  )
+
+  fp_mat <- as.matrix(fp[, -1])
+  rownames(fp_mat) <- fp$pour_point_id
+
+  overlap_matrix <- Matrix::tcrossprod(fp_mat)
+
+  # adjacency: 1 = overlap, 0 = no overlap
+  adj <- overlap_matrix > 0
+  diag(adj) <- FALSE
+
+  g <- igraph::graph_from_adjacency_matrix(adj, mode = "undirected")
+  groups <- igraph::greedy_vertex_coloring(g)
+  group_meta <- data.frame(
+    link_id = rownames(fp),
+    unn_group = groups
+  ) |>
+    dplyr::group_by(unn_group) |>
+    dplyr::mutate(
+      unn_group = rand_id(1),
+      unn_group_size = n()
+    ) |>
+    dplyr::ungroup()
+
+  sf::write_sf(
+    group_meta,
+    input$outfile,
+    layer = "unnest_catchment",
+    append = TRUE,
+    delete_layer = FALSE,
+    delete_dsn = FALSE
+  )
+
+  invisible(group_meta)
 }

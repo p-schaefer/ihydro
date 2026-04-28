@@ -89,8 +89,7 @@ get_catchment <- function(
   target_ids <- target_id_fun(
     db_fp = db_fp,
     sample_points = sample_points,
-    link_id = link_id,
-    segment_whole = FALSE
+    link_id = link_id
   )
 
   already_done <- dplyr::filter(

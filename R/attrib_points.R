@@ -125,14 +125,11 @@ attrib_points <- function(
   target_ids <- target_id_fun(
     db_fp = db_fp,
     sample_points = sample_points,
-    link_id = link_id,
-    segment_whole = target_o_type == "segment_whole",
-    target_o_type = target_o_type
+    link_id = link_id
   )
   target_o <- target_o_fun(
     db_fp = db_fp,
-    target_IDs = target_ids,
-    target_o_type = target_o_type
+    target_IDs = target_idss
   )
 
   # -- Clip region ---
@@ -191,9 +188,7 @@ attrib_points <- function(
   target_ids_out <- target_id_fun(
     db_fp = db_fp,
     sample_points = sample_points,
-    link_id = link_id,
-    segment_whole = FALSE,
-    target_o_type = target_o_type
+    link_id = link_id
   )
 
   final_out <- dplyr::left_join(
@@ -255,8 +250,7 @@ attrib_points <- function(
 #' @noRd
 .ap_resolve_clip <- function(clip_region, temp_dir) {
   clip_region <- process_input(
-    clip_region,
-    input_name = "clip_region"
+    clip_region
   )
   if (is.null(clip_region)) {
     return(NULL)

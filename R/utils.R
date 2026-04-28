@@ -147,12 +147,13 @@ ihydro_layers <- function(input) {
             "site_id_col",
             "DEM_Extent",
             "loi_meta",
-            "target_o_meta"
+            "unnest_catchment"
           ) ~ "meta",
         layer_name %in%
           c("snapped_points", "original_points") ~ "sample_points",
         layer_name %in%
           c(
+            "Elevation",
             "stream_links",
             "stream_lines",
             "stream_points",
@@ -280,22 +281,11 @@ read_site_id_col <- function(db_fp) {
 target_id_fun <- function(
   db_fp,
   sample_points = NULL,
-  link_id = NULL,
-  segment_whole = FALSE,
-  target_o_type = c(
-    "point",
-    "segment_point",
-    "segment_whole"
-  )
+  link_id = NULL
 ) {
-  target_o_type <- match.arg(target_o_type)
+  site_id_col <- read_ihydro(db_fp, "site_id_col")$site_id_col
 
-  con <- DBI::dbConnect(RSQLite::SQLite(), db_fp)
-  on.exit(DBI::dbDisconnect(con), add = TRUE)
-
-  site_id_col <- dplyr::collect(dplyr::tbl(con, "site_id_col"))$site_id_col
-
-  all_points <- dplyr::collect(dplyr::tbl(con, "stream_links_attr")) |>
+  all_points <- read_ihydro(db_fp, "stream_links_attr") |>
     dplyr::mutate(
       dplyr::across(
         c(link_id, tidyselect::any_of(site_id_col)),
@@ -341,54 +331,7 @@ target_id_fun <- function(
 
   target_ids <- dplyr::distinct(target_ids)
 
-  if (segment_whole) {
-    target_ids <- target_ids |>
-      dplyr::select(link_id) |>
-      dplyr::mutate(link_id = as.character(floor(as.numeric(link_id))))
-  }
-
-  if (target_o_type != "point") {
-    available <- sf::read_sf(
-      db_fp,
-      query = build_sql_in("stream_lines", "link_id", target_ids$link_id)
-    )
-    target_ids <- dplyr::filter(target_ids, link_id %in% available$link_id)
-  }
-
   dplyr::mutate(target_ids, link_id = as.character(link_id))
-}
-
-#' Read the target geometry (point, segment, or whole-segment)
-#' @noRd
-target_o_fun <- function(
-  db_fp,
-  target_IDs,
-  target_o_type = c(
-    "point",
-    "segment_point",
-    "segment_whole"
-  )
-) {
-  target_o_type <- match.arg(target_o_type)
-  ids <- target_IDs$link_id
-
-  if (target_o_type == "point") {
-    layer <- "stream_links"
-  } else {
-    layer <- "stream_lines"
-  }
-
-  target_o <- sf::read_sf(db_fp, query = build_sql_in(layer, "link_id", ids))
-
-  if (target_o_type == "segment_whole") {
-    target_o <- target_o |>
-      dplyr::select(link_id) |>
-      dplyr::mutate(link_id = as.character(floor(as.numeric(link_id)))) |>
-      dplyr::filter(link_id %in% ids) |>
-      dplyr::summarise(geom = sf::st_union(geom), .by = link_id)
-  }
-
-  target_o
 }
 
 #' Build a SQL IN-clause query for reading from gpkg
@@ -426,7 +369,7 @@ write_raster_gpkg <- function(
     x,
     rbind(
       c(na_val, na_val + .Machine$double.eps),
-      c(NA_real_,na_val)
+      c(NA_real_, na_val)
     )
   )
 
@@ -885,5 +828,3 @@ combine_weighted_sample_var <- function(sub_mean, sub_var, sub_wt, cnt) {
 combine_weighted_sample_sd <- function(sub_mean, sub_var, sub_wt, cnt) {
   sqrt(combine_weighted_sample_var(sub_mean, sub_var, sub_wt, cnt))
 }
-
-

@@ -120,7 +120,7 @@ process_hydrology <- function(
   )
 
   if (!is.null(points)) {
-    points <- sf::st_as_sf(process_input(points, input_name = "points"))
+    points <- sf::st_as_sf(process_input(points))
     validate_site_id_col(site_id_col)
     if (!site_id_col %in% names(points)) {
       cli::cli_abort("{.arg site_id_col} must be a column in {.arg points}.")

@@ -424,8 +424,7 @@ snap_points_to_network <- function(
 ) {
   points <- process_input(
     points,
-    align_to = terra::vect(utils::head(final_points[, 1])),
-    input_name = "points"
+    align_to = terra::vect(utils::head(final_points[, 1]))
   )
 
   original_sf <- sf::st_as_sf(points) |>

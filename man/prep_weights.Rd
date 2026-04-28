@@ -124,7 +124,7 @@ ihydro_weights <- ihydro::prep_weights(
    verbose = TRUE
 )
 
-lookup_tbl <- ihydro::read_ihydro(ihydro_weights,"target_o_meta")
+lookup_tbl <- ihydro::read_ihydro(ihydro_weights,"unnest_catchment")
 weight_id <- dplyr::filter(lookup_tbl, link_id == "800")$unn_group
 
 weight_rast <- ihydro::read_ihydro(ihydro_weights, paste0("iFLO_unn_group", weight_id))

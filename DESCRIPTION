@@ -46,7 +46,9 @@ Imports:
     whitebox,
     sfheaders,
     mirai,
-    SSNbler
+    SSNbler,
+    igraph,
+    Matrix
 Depends:
     R (>= 4.2.0)
 Suggests:

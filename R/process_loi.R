@@ -205,7 +205,7 @@ process_loi <- function(
   if (!is.null(input)) {
     dem <- read_ihydro(input, "dem_final")
   } else {
-    dem <- process_input(dem, input_name = "dem", working_dir = temp_dir)
+    dem <- process_input(dem, working_dir = temp_dir)
     if (!inherits(dem, "SpatRaster")) {
       cli::cli_abort("{.arg dem} must resolve to a {.cls SpatRaster}.")
     }
@@ -226,7 +226,6 @@ process_loi <- function(
   } else {
     clip_region <- process_input(
       clip_region,
-      input_name = "clip_region",
       working_dir = temp_dir,
       align_to = terra::vect(
         "POLYGON ((0 -5, 10 0, 10 -10, 0 -5))",
@@ -506,7 +505,6 @@ process_single_loi_worker <- carrier::crate(
     suppressMessages(
       output <- ihydro::process_input(
         input = unlist(lyr),
-        input_name = unlist(lyr_nms),
         input_variable_names = if (!is.null(lyr_variables)) {
           unlist(lyr_variables)
         } else {

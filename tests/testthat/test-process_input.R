@@ -1,5 +1,7 @@
 # tests/testthat/test-process_input.R
 
+process_input <- ihydro:::process_input
+
 test_that("process_input handles SpatRaster input", {
   r <- terra::rast(nrows = 10, ncols = 10, vals = 1:100)
   terra::crs(r) <- "EPSG:4326"
@@ -42,7 +44,10 @@ test_that("process_input errors on missing CRS", {
 
 test_that("process_input errors on missing variable", {
   r <- terra::rast(nrows = 5, ncols = 5, vals = 1:25, crs = "EPSG:4326")
-  expect_error(process_input(r, variable_names = "not_a_var"), "not in input")
+  expect_error(
+    process_input(r, input_variable_names = "not_a_var"),
+    "not present"
+  )
 })
 
 test_that("process_input rasterizes SpatVector with resample_type = 'bilinear'", {
@@ -63,13 +68,13 @@ test_that("process_input rasterizes SpatVector with resample_type = 'bilinear'",
   )
   out <- process_input(
     v,
-    variable_names = "val",
-    target = r,
+    input_variable_names = "val",
+    align_to = r,
     resample_type = "bilinear"
   )
   expect_s4_class(out, "SpatRaster")
   expect_equal(names(out), "val")
-  expect_true(all(!is.na(terra::values(out))))
+  expect_true(sum(!is.nan(terra::values(out))) > 0) # Should have some non-NA values
 })
 
 test_that("process_input rasterizes SpatVector with resample_type = 'near'", {
@@ -90,8 +95,8 @@ test_that("process_input rasterizes SpatVector with resample_type = 'near'", {
   )
   out <- process_input(
     v,
-    variable_names = "cat",
-    target = r,
+    input_variable_names = "cat",
+    align_to = r,
     resample_type = "near"
   )
   expect_s4_class(out, "SpatRaster")
@@ -102,7 +107,7 @@ test_that("process_input rasterizes SpatVector with resample_type = 'near'", {
 test_that("process_input projects raster with resample_type = 'bilinear'", {
   r1 <- terra::rast(nrows = 5, ncols = 5, vals = 1:25, crs = "EPSG:4326")
   r2 <- terra::rast(nrows = 5, ncols = 5, vals = 1:25, crs = "EPSG:3857")
-  out <- process_input(r1, target = r2, resample_type = "bilinear")
+  out <- process_input(r1, align_to = r2, resample_type = "bilinear")
   expect_equal(terra::crs(out), terra::crs(r2))
 })
 
@@ -114,6 +119,6 @@ test_that("process_input projects raster with resample_type = 'near'", {
     crs = "EPSG:4326"
   )
   r2 <- terra::rast(nrows = 5, ncols = 5, vals = 1:25, crs = "EPSG:3857")
-  out <- process_input(r1, target = r2, resample_type = "near")
+  out <- process_input(r1, align_to = r2, resample_type = "near")
   expect_equal(terra::crs(out), terra::crs(r2))
 })

@@ -21,19 +21,21 @@ fl <- list.files(
 
 fl <- fl[grepl("\\.tif$|\\.shp$", fl)]
 
-targ_crs <- terra::crs(terra::rast(fl[grepl("elev",fl)]))
+targ_crs <- terra::crs(terra::rast(fl[grepl("elev", fl)]))
 
 for (i in fl) {
   if (grepl("\\.tif$", i)) {
     r <- terra::rast(i)
     r <- terra::project(r, targ_crs)
-    terra::writeRaster(r,
-                       i,
-                       overwrite = TRUE,
-                       datatype = "FLT4S")
+    terra::writeRaster(r, i, overwrite = TRUE, datatype = "FLT4S")
   }
   if (grepl("\\.shp$", i)) {
-    v <- terra::vect(i)
+    if (grepl("streams.shp$", i)) {
+      v <- terra::svc(i)
+      v <- v[2]
+    } else {
+      v <- terra::vect(i)
+    }
     v <- terra::project(v, targ_crs)
     terra::writeVector(v, i, overwrite = TRUE)
   }

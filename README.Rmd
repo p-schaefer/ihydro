@@ -109,7 +109,7 @@ tmap_options(component.autoscale = FALSE)
 
 # Parallelization is done through the future package, so all parallel backends
 # should be supported i.e.,:
-#plan(multisession(workers = 4))
+plan(multisession(workers = 4))
 
 ## Generate ex_loc as a temporary directory
 ex_loc <- tempdir()
@@ -1057,9 +1057,7 @@ dw_time <- system.time(
   Processed_HW <- prep_weights(
     input = hydro_out,
     output_filename = file.path(tempdir(), "Processed_HW_out.gpkg"),
-    weighting_scheme = c("iFLS", "iFLO", "HAiFLO", "HAiFLS"),
-    target_o_type = c("segment_point"),
-    write_strategy = "batched"
+    weighting_scheme = c("iFLS", "iFLO", "HAiFLO", "HAiFLS")
   )
 )
 
@@ -1070,8 +1068,8 @@ fasttrib_points_time_big <- system.time(
     out_filename = "sample_points_wgtattr.csv",
     loi_file = output_filename_loi,
     loi_cols = NULL,
-    iDW_file = file.path(tempfile(), "iDW_temp.gpkg"), 
-    #iDW_file =  file.path(tempdir(),"Processed_HW_out.gpkg"), # to use previously calculated weights 
+    iDW_file = file.path(tempfile(), "iDW_temp.gpkg"),
+    #iDW_file =  file.path(tempdir(),"Processed_HW_out.gpkg"), # to use previously calculated weights
     store_iDW = T,
     sample_points = NULL, # by specifying neither sample_points nor link_id
     link_id = NULL, #   we get all reaches
@@ -1088,14 +1086,15 @@ fasttrib_points_time_big <- system.time(
 
 
 to_ssn <- function(
-    ihydro_obj = hydro_out,
-    loi_obj = NULL,
-    loi_cols = NULL,
-    obs_obj = NULL,
-    temp_dir = NULL,
-    verbose = FALSE
-)
-final_attributes_all
+  ihydro_obj = hydro_out,
+  loi_obj = NULL,
+  loi_cols = NULL,
+  obs_obj = NULL,
+  temp_dir = NULL,
+  verbose = FALSE
+) {
+  final_attributes_all
+}
 
 attrib_points_time_big <- system.time(
   final_attributes_slow <- attrib_points(

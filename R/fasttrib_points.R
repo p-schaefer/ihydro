@@ -169,56 +169,34 @@
 #'
 
 fasttrib_points <- function(
-    input,
-    out_filename,
-    loi_file = NULL,
-    loi_cols = NULL,
-    iDW_file = NULL,
-    store_iDW = FALSE,
-    sample_points = NULL,
-    link_id = NULL,
-    target_o_type = c("point", "segment_point", "segment_whole"),
-    weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"),
-    loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
-    inv_function = NULL,
-    write_strategy = NULL,
-    mem_fraction = 0.5,
-    temp_dir = NULL,
-    verbose = FALSE
+  input,
+  out_filename,
+  loi_file = NULL,
+  loi_cols = NULL,
+  iDW_file = NULL,
+  sample_points = NULL,
+  link_id = NULL,
+  weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"),
+  loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
+  mem_fraction = 0.5,
+  temp_dir = NULL,
+  verbose = FALSE
 ) {
   # ─ Validate inputs ───────────────────────────
   check_ihydro(input)
-  stopifnot(is.logical(store_iDW), length(store_iDW) == 1L)
+  check_ihydro(iDW_file)
   stopifnot(mem_fraction < 0.9 | mem_fraction > 0.1)
   weighting_scheme <- match.arg(
     weighting_scheme,
-    several.ok = TRUE,
-    choices = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO")
+    several.ok = TRUE
   )
 
-  if (is.null(inv_function)) {
-    inv_function <- function(x) (x * 0.001 + 1)^-1
-  }
-  if (is.null(write_strategy)) {
-    write_strategy <- c("sequential", "batched")
-  }
-
-  target_o_type <- match.arg(target_o_type)
-  weighting_scheme <- match.arg(
-    weighting_scheme,
-    several.ok = TRUE,
-    choices = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO")
-  )
   loi_numeric_stats <- match.arg(
     loi_numeric_stats,
     several.ok = TRUE,
     choices = c("mean", "sd", "median", "min", "max", "sum")
   )
   loi_numeric_stats <- stats::setNames(loi_numeric_stats, loi_numeric_stats)
-  write_strategy <- match.arg(
-    write_strategy,
-    choices = c("sequential", "batched")
-  )
 
   input_path <- input$outfile
   temp_dir <- ensure_temp_dir(temp_dir)
@@ -264,75 +242,23 @@ fasttrib_points <- function(
   target_ids <- target_id_fun(
     db_fp = input_path,
     sample_points = sample_points,
-    link_id = link_id,
-    segment_whole = target_o_type == "segment_whole",
-    target_o_type = target_o_type
+    link_id = link_id
   )
 
   # ─ Resolve iDW file and prepare weights ─────────────────
-  iDW_path <- .resolve_idw_path(input, iDW_file, store_iDW)
-  target_o_meta <- dplyr::mutate(target_ids, unn_group = "1")
-  if (!all(weighting_scheme == "lumped")) {
-    # ─ Check if existing weights match the requested target_o_type ────────
-    needs_recalc <- FALSE
-    if (file.exists(iDW_path)) {
-      iDW_lyrs <- tryCatch(
-        ihydro_layers(as.ihydro(iDW_path)),
-        error = function(cnd) tibble::tibble(layer_name = character(0))
-      )
-      if ("target_o_meta" %in% iDW_lyrs$layer_name) {
-        stored_meta <- tryCatch(
-          sf::read_sf(iDW_path, "target_o_meta"),
-          error = function(cnd) NULL
-        )
-        if (
-          !is.null(stored_meta) &&
-          "target_o_type" %in% colnames(stored_meta) &&
-          nrow(stored_meta) > 0L
-        ) {
-          stored_types <- unique(stored_meta$target_o_type)
-          if (!target_o_type %in% stored_types) {
-            cli::cli_warn(c(
-              "!" = "Stored weights in {.path {iDW_path}} were computed with
-                     {.val {stored_types}}, not {.val {target_o_type}}.",
-              "i" = "Recalculating weights for {.val {target_o_type}}."
-            ))
-            needs_recalc <- TRUE
-          }
-        }
-      }
+  idw_layers <- ihydro_layers(iDW_file)$layer_name
+  missing_layers <- setdiff(weighting_scheme, idw_layers)
+  if (length(missing_layers) > 0L) {
+    if (verbose) {
+      cli::cli_abort(c(
+        "The following weighting layers are missing from iDW_file and will be computed: ",
+        "i" = "{.val {missing_layers}}"
+      ))
     }
-
-    iDW_out <- prep_weights(
-      input = input,
-      output_filename = iDW_path,
-      sample_points = sample_points,
-      link_id = link_id,
-      target_o_type = target_o_type,
-      weighting_scheme = weighting_scheme[weighting_scheme != "lumped"],
-      inv_function = inv_function,
-      temp_dir = temp_dir,
-      write_strategy = write_strategy,
-      verbose = verbose
-    )
-    if (!inherits(iDW_out, "ihydro")) {
-      stop(iDW_out)
-    }
-    iDW_path <- iDW_out$outfile
-    target_o_meta <- tryCatch(
-      {
-        meta <- sf::read_sf(iDW_path, "target_o_meta")
-        if ("target_o_type" %in% colnames(meta)) {
-          dplyr::filter(meta, target_o_type == !!target_o_type)
-        } else {
-          meta
-        }
-      },
-      error = function(cnd) dplyr::mutate(target_ids, unn_group = "1")
-    )
   }
 
   # ─ Build subbasin lookup ────────────────────────
+  unnest_catchment <- sf::read_sf(input, "unnest_catchment")
   site_id_col <- read_ihydro(input, "site_id_col")[[1]]
 
   subb_ids <- read_ihydro(input, "stream_links_attr") |>
@@ -340,7 +266,7 @@ fasttrib_points <- function(
     dplyr::filter(link_id %in% target_ids$link_id) |> # small catchments without streams
     dplyr::select(link_id, tidyselect::any_of(site_id_col), USChnLn_To) |>
     dplyr::left_join(
-      dplyr::mutate(target_o_meta, link_id = as.character(link_id)),
+      dplyr::mutate(unnest_catchment, link_id = as.character(link_id)),
       by = c("link_id")
     )
 
@@ -357,7 +283,6 @@ fasttrib_points <- function(
     dplyr::filter(
       final_link_id %in% subb_ids$link_id
     )
-
 
   # Ensure catchments exist
   catch <- get_catchment(
@@ -513,44 +438,30 @@ fasttrib_points <- function(
   loi_file
 }
 
-#' Resolve iDW path â€” returns a character path to a .gpkg
-#' @noRd
-.resolve_idw_path <- function(input, iDW_file, store_iDW) {
-  if (!is.null(iDW_file)) {
-    if (inherits(iDW_file, "ihydro")) {
-      return(iDW_file$outfile)
-    }
-    return(iDW_file)
-  }
-  if (store_iDW) {
-    return(input$outfile)
-  }
-  tmp <- tempfile()
-  dir.create(tmp, recursive = TRUE)
-  file.path(tmp, "temp_iDW.gpkg")
-}
-
-
 #' Extract raster attributes
 #' @noRd
 .extract_fun <- function(
-    all_rasts,
-    subbasins,
-    x_cols = NULL,
-    weight_cols = NULL,
-    #sqweight_cols = NULL,
-    default_value = NA_real_,
-    default_weight = NA_real_,
-    fun,
-    quantiles = NULL,
-    max_cells_in_memory = 3e+07,
-    include_count = FALSE,
-    n_cores = 1L,
-    temp_dir_sub = NULL
+  all_rasts,
+  subbasins,
+  x_cols = NULL,
+  weight_cols = NULL,
+  #sqweight_cols = NULL,
+  default_value = NA_real_,
+  default_weight = NA_real_,
+  fun,
+  quantiles = NULL,
+  max_cells_in_memory = 3e+07,
+  include_count = FALSE,
+  n_cores = 1L,
+  temp_dir_sub = NULL
 ) {
   if (is.null(x_cols) && is.null(weight_cols)) {
     return(NULL)
   }
+  all_rasts <- terra::crop(
+    all_rasts,
+    terra::vect(subbasins)
+  )
 
   weights_resolve <- function(all_rasts, weight_cols = NULL) {
     if (is.null(weight_cols)) {
@@ -572,9 +483,11 @@ fasttrib_points <- function(
     verbose = FALSE
   )
   on.exit(ihydro:::restore_terra_options(old_terra_opts), add = TRUE)
-  on.exit(suppressWarnings(unlink(temp_dir_sub,recursive = TRUE,force = TRUE)), add = TRUE)
+  on.exit(
+    suppressWarnings(unlink(temp_dir_sub, recursive = TRUE, force = TRUE)),
+    add = TRUE
+  )
   on.exit(gc(verbose = FALSE), add = TRUE)
-
 
   if (include_count) {
     all_rasts[["count_internal"]] <- all_rasts[[1]]
@@ -924,31 +837,31 @@ fasttrib_points <- function(
 #' Create subbasin extraction plan
 #' @noRd
 .extract_planner <- function(
-    input,
-    subb_ids,
-    loi_rast_input,
-    numb_rast,
-    cat_rast,
-    iDW_rast_input,
-    iDW_cols,
-    max_cells_in_memory = 3e+07,
-    n_cores = 1L,
-    chunks_per_worker = 1L,
-    fun = c(
-      "mean",
-      "sd",
-      "var",
-      "cv",
-      "min",
-      "max",
-      "sum",
-      "count",
-      "median",
-      "quantile"
-    ),
-    quantiles = NULL,
-    temp_dir = NULL,
-    verbose = FALSE
+  input,
+  subb_ids,
+  loi_rast_input,
+  numb_rast,
+  cat_rast,
+  iDW_rast_input,
+  iDW_cols,
+  max_cells_in_memory = 3e+07,
+  n_cores = 1L,
+  chunks_per_worker = 1L,
+  fun = c(
+    "mean",
+    "sd",
+    "var",
+    "cv",
+    "min",
+    "max",
+    "sum",
+    "count",
+    "median",
+    "quantile"
+  ),
+  quantiles = NULL,
+  temp_dir = NULL,
+  verbose = FALSE
 ) {
   safe_kmeans <- function(x, centers, ...) {
     x0 <- x
@@ -1026,82 +939,82 @@ fasttrib_points <- function(
   tasks_lump <- NULL
 
   # develop ws_s tasks
-  count_with_o <- TRUE
-  if (length(ws_s) > 0L) {
-    count_with_o <- FALSE
+  #count_with_o <- TRUE
+  #if (length(ws_s) > 0L) {
+  #count_with_o <- FALSE
 
-    # group accordinging to location
-    tasks_s_group <- safe_kmeans(
-      tasks[, c("link_id", "cent_x", "cent_y")],
-      n_jobs
-    )$cluster
+  # group accordinging to location
+  tasks_s_group <- safe_kmeans(
+    tasks[, c("link_id", "cent_x", "cent_y")],
+    n_jobs
+  )$cluster
 
-    tasks_s <- lapply(
-      split(tasks$link_id, tasks_s_group),
-      function(x) {
-        list(
-          input_file = input$outfile,
-          link_id = x,
-          loi_rast_input = loi_rast_input$outfile,
-          loi_summary = TRUE,
-          numb_rast = numb_rast,
-          cat_rast = cat_rast,
-          iDW_rast_input = iDW_rast_input$outfile,
-          iDW_cols = ws_s,
-          max_cells_in_memory = max_cells_in_memory,
-          n_cores = n_cores,
-          include_count = !count_with_o
-        )
-      }
-    )
-  }
-
-  # develop ws_o tasks
-  if (length(ws_o) > 0L) {
-    subb_lookup <- subb_lookup |>
-      dplyr::left_join(
-        tasks[, c("link_id", "cent_x", "cent_y")],
-        by = c("link_id" = "link_id")
-      ) |>
-      dplyr::left_join(
-        tasks[, c("link_id", "unn_group")],
-        by = c("final_link_id" = "link_id")
+  tasks_s <- lapply(
+    split(tasks$link_id, tasks_s_group),
+    function(x) {
+      list(
+        input_file = input$outfile,
+        link_id = x,
+        loi_rast_input = loi_rast_input$outfile,
+        loi_summary = TRUE,
+        numb_rast = numb_rast,
+        cat_rast = cat_rast,
+        iDW_rast_input = iDW_rast_input$outfile,
+        iDW_cols = c(ws_s, ws_o),
+        max_cells_in_memory = max_cells_in_memory,
+        n_cores = n_cores,
+        include_count = TRUE #!count_with_o
       )
+    }
+  )
+  #}
 
-    tasks_o <- split(subb_lookup, subb_lookup$unn_group)
-
-    # group accordinging to location by unn_group
-    tasks_o <- lapply(tasks_o, function(x) {
-      x$group <- safe_kmeans(
-        x[, c("link_id", "cent_x", "cent_y")],
-        n_jobs
-      )$cluster
-      x <- split(x, x$group)
-      return(x)
-    })
-
-    tasks_o <- unlist(tasks_o, recursive = F)
-
-    tasks_o <- lapply(
-      tasks_o,
-      function(x) {
-        list(
-          input_file = input$outfile,
-          link_id = x$link_id,
-          link_id_otarget = x$final_link_id,
-          loi_rast_input = loi_rast_input$outfile,
-          loi_summary = FALSE,
-          numb_rast = numb_rast,
-          cat_rast = cat_rast,
-          iDW_rast_input = iDW_rast_input$outfile,
-          iDW_cols = paste(ws_o, unique(x$unn_group), sep = "_unn_group"),
-          max_cells_in_memory = max_cells_in_memory,
-          n_cores = n_cores,
-          include_count = count_with_o
-        )
-      }
-    )
-  }
+  # # develop ws_o tasks
+  # if (length(ws_o) > 0L) {
+  #   subb_lookup <- subb_lookup |>
+  #     dplyr::left_join(
+  #       tasks[, c("link_id", "cent_x", "cent_y")],
+  #       by = c("link_id" = "link_id")
+  #     ) |>
+  #     dplyr::left_join(
+  #       tasks[, c("link_id", "unn_group")],
+  #       by = c("final_link_id" = "link_id")
+  #     )
+  #
+  #   tasks_o <- split(subb_lookup, subb_lookup$unn_group)
+  #
+  #   # group accordinging to location by unn_group
+  #   tasks_o <- lapply(tasks_o, function(x) {
+  #     x$group <- safe_kmeans(
+  #       x[, c("link_id", "cent_x", "cent_y")],
+  #       n_jobs
+  #     )$cluster
+  #     x <- split(x, x$group)
+  #     return(x)
+  #   })
+  #
+  #   tasks_o <- unlist(tasks_o, recursive = F)
+  #
+  #   tasks_o <- lapply(
+  #     tasks_o,
+  #     function(x) {
+  #       list(
+  #         input_file = input$outfile,
+  #         link_id = x$link_id,
+  #         link_id_otarget = x$final_link_id,
+  #         loi_rast_input = loi_rast_input$outfile,
+  #         loi_summary = FALSE,
+  #         numb_rast = numb_rast,
+  #         cat_rast = cat_rast,
+  #         iDW_rast_input = iDW_rast_input$outfile,
+  #         iDW_cols = paste(ws_o, unique(x$unn_group), sep = "_unn_group"),
+  #         max_cells_in_memory = max_cells_in_memory,
+  #         n_cores = n_cores,
+  #         include_count = count_with_o
+  #       )
+  #     }
+  #   )
+  # }
 
   # develop ws_lump tasks
   if ("median" %in% fun || !is.null(quantiles)) {
@@ -1147,13 +1060,12 @@ fasttrib_points <- function(
 #' @return Tibble with one row per catchment (link_id_otarget), columns for each summary
 #' @noRd
 .summarize_catchment <- function(
-    extract_value,
-    weighting_scheme,
-    loi_numeric_stats,
-    numeric_vars,
-    cat_vars
+  extract_value,
+  weighting_scheme,
+  loi_numeric_stats,
+  numeric_vars,
+  cat_vars
 ) {
-
   # Helper: Pivot and clean
   clean_data <- function(df) {
     df[sapply(df, is.nan)] <- NA_real_
@@ -1304,69 +1216,69 @@ fasttrib_points <- function(
     tibble::as_tibble(res)
   }
 
-  # Summarize ws_o (O-targeted iDW only)
-  summarize_ws_o <- function(df) {
-    gp <- unique(df$unn_group)
-    gp <- gp[!is.na(gp)]
-    gp <- paste0("_unn_group",gp)
-    res <- list()
-    for (ws in intersect(weighting_scheme, c("iFLO", "HAiFLO"))) {
-      for (var in numeric_vars) {
-        mean_col <- paste0("weighted_mean.", var, ".", ws, gp)
-        var_col <- paste0("weighted_variance.", var, ".", ws, gp)
-        sum_col <- paste0("weighted_sum.", var, ".", ws, gp)
-        wt_col <- paste0("weighted_sum.", ws, gp, ".", var)
-        cnt_col <- "count.count_internal"
-        if (all(c(mean_col, var_col, wt_col) %in% names(df))) {
-          sub_mean <- df[[mean_col]]
-          sub_var <- df[[var_col]]
-          sub_wt <- df[[wt_col]]
-          sub_cnt <- df[[cnt_col]]
-          if ("mean" %in% loi_numeric_stats) {
-            res[[paste0(var, "_", ws, "_mean")]] <- combine_weighted_mean(
-              sub_mean,
-              sub_wt,
-              sub_cnt
-            )
-          }
-          if ("sd" %in% loi_numeric_stats) {
-            res[[paste0(var, "_", ws, "_sd")]] <- combine_weighted_sample_sd(
-              sub_mean,
-              sub_var,
-              sub_wt,
-              sub_cnt
-            )
-          }
-          if ("var" %in% loi_numeric_stats) {
-            res[[paste0(var, "_", ws, "_var")]] <- combine_weighted_sample_var(
-              sub_mean,
-              sub_var,
-              sub_wt,
-              sub_cnt
-            )
-          }
-          if ("sum" %in% loi_numeric_stats && sum_col %in% names(df)) {
-            res[[paste0(var, "_", ws, "_sum")]] <- sum(
-              df[[sum_col]],
-              na.rm = TRUE
-            )
-          }
-        }
-      }
-      for (cat in cat_vars) {
-        sum_col <- paste0("weighted_sum.", cat, ".", ws, gp)
-        wt_col <- paste0("sum.", ws, gp)
-        if (sum_col %in% names(df) && wt_col %in% names(df)) {
-          res[[paste0(cat, "_", ws, "_prop")]] <- sum(
-            df[[sum_col]],
-            na.rm = TRUE
-          ) /
-            sum(df[[wt_col]], na.rm = TRUE)
-        }
-      }
-    }
-    tibble::as_tibble(res)
-  }
+  # # Summarize ws_o (O-targeted iDW only)
+  # summarize_ws_o <- function(df) {
+  #   gp <- unique(df$unn_group)
+  #   gp <- gp[!is.na(gp)]
+  #   gp <- paste0("_unn_group", gp)
+  #   res <- list()
+  #   for (ws in intersect(weighting_scheme, c("iFLO", "HAiFLO"))) {
+  #     for (var in numeric_vars) {
+  #       mean_col <- paste0("weighted_mean.", var, ".", ws, gp)
+  #       var_col <- paste0("weighted_variance.", var, ".", ws, gp)
+  #       sum_col <- paste0("weighted_sum.", var, ".", ws, gp)
+  #       wt_col <- paste0("weighted_sum.", ws, gp, ".", var)
+  #       cnt_col <- "count.count_internal"
+  #       if (all(c(mean_col, var_col, wt_col) %in% names(df))) {
+  #         sub_mean <- df[[mean_col]]
+  #         sub_var <- df[[var_col]]
+  #         sub_wt <- df[[wt_col]]
+  #         sub_cnt <- df[[cnt_col]]
+  #         if ("mean" %in% loi_numeric_stats) {
+  #           res[[paste0(var, "_", ws, "_mean")]] <- combine_weighted_mean(
+  #             sub_mean,
+  #             sub_wt,
+  #             sub_cnt
+  #           )
+  #         }
+  #         if ("sd" %in% loi_numeric_stats) {
+  #           res[[paste0(var, "_", ws, "_sd")]] <- combine_weighted_sample_sd(
+  #             sub_mean,
+  #             sub_var,
+  #             sub_wt,
+  #             sub_cnt
+  #           )
+  #         }
+  #         if ("var" %in% loi_numeric_stats) {
+  #           res[[paste0(var, "_", ws, "_var")]] <- combine_weighted_sample_var(
+  #             sub_mean,
+  #             sub_var,
+  #             sub_wt,
+  #             sub_cnt
+  #           )
+  #         }
+  #         if ("sum" %in% loi_numeric_stats && sum_col %in% names(df)) {
+  #           res[[paste0(var, "_", ws, "_sum")]] <- sum(
+  #             df[[sum_col]],
+  #             na.rm = TRUE
+  #           )
+  #         }
+  #       }
+  #     }
+  #     for (cat in cat_vars) {
+  #       sum_col <- paste0("weighted_sum.", cat, ".", ws, gp)
+  #       wt_col <- paste0("sum.", ws, gp)
+  #       if (sum_col %in% names(df) && wt_col %in% names(df)) {
+  #         res[[paste0(cat, "_", ws, "_prop")]] <- sum(
+  #           df[[sum_col]],
+  #           na.rm = TRUE
+  #         ) /
+  #           sum(df[[wt_col]], na.rm = TRUE)
+  #       }
+  #     }
+  #   }
+  #   tibble::as_tibble(res)
+  # }
 
   # Main logic
   result <- list()
@@ -1384,16 +1296,16 @@ fasttrib_points <- function(
       tidyr::nest() |>
       dplyr::mutate(summary = purrr::map(data, summarize_ws_s))
   }
-  if (!is.null(extract_value$ws_o)) {
-    ws_o <- clean_data(extract_value$ws_o)
-    result$ws_o <- ws_o |>
-      dplyr::bind_rows(
-        dplyr::select(ws_s,count.count_internal)
-        ) |>
-      dplyr::group_by(link_id_otarget) |>
-      tidyr::nest() |>
-      dplyr::mutate(summary = purrr::map(data, summarize_ws_o))
-  }
+  # if (!is.null(extract_value$ws_o)) {
+  #   ws_o <- clean_data(extract_value$ws_o)
+  #   result$ws_o <- ws_o |>
+  #     dplyr::bind_rows(
+  #       dplyr::select(ws_s, count.count_internal)
+  #     ) |>
+  #     dplyr::group_by(link_id_otarget) |>
+  #     tidyr::nest() |>
+  #     dplyr::mutate(summary = purrr::map(data, summarize_ws_o))
+  # }
 
   # Unnest and join all summaries
   result <- purrr::map(
