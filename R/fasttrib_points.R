@@ -516,6 +516,15 @@ fasttrib_points <- function(
     suppressWarnings(unlink(temp_dir_sub, recursive = TRUE, force = TRUE)),
     add = TRUE
   )
+  on.exit(
+    terra::tmpFiles(
+      current=TRUE,
+      orphan=FALSE,
+      old=FALSE,
+      remove=TRUE
+    ),
+    add=T
+  )
   on.exit(gc(verbose = FALSE), add = TRUE)
 
   if (include_count) {
