@@ -25,17 +25,10 @@
 #'   written into the `input` GeoPackage.
 #' @param sample_points Character vector of site IDs, or `NULL` for all.
 #' @param link_id Character vector of link IDs, or `NULL`.
-#' @param target_o_type One of `"point"`, `"segment_point"`, `"segment_whole"`.
 #' @param weighting_scheme Character vector. Any of `"lumped"`, `"iFLS"`,
 #'   `"HAiFLS"`, `"iFLO"`, `"HAiFLO"`.
 #' @param loi_numeric_stats Character vector. Any of `"mean"`, `"sd"`,
 #'   `"median"`, `"min"`, `"max"`, `"sum"`.
-#' @param inv_function Inverse-distance function (see [prep_weights()]).
-#' @param write_strategy Character. How processed weight rasters are written to the
-#'   GeoPackage. `"sequential"` (default) waits for all parallel workers to
-#'   finish, then writes every raster in one pass. `"batched"` processes unnest
-#'   groups in chunks, writing to the GeoPackage between chunks to reduce peak
-#'   temporary disk usage.
 #' @param mem_fraction Numeric. Value between 0.1 and 0.9 (larger values give a warning).
 #'   The fraction of RAM that may be used by the program.
 #' @param temp_dir Temporary directory for intermediate files.
@@ -179,6 +172,7 @@ fasttrib_points <- function(
     weighting_scheme = c("lumped","iFLS","HAiFLS","iFLO","HAiFLO"),
     loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
     mem_fraction = 0.5,
+    n_batches = NULL,
     temp_dir = NULL,
     verbose = FALSE,
     ...
@@ -187,6 +181,11 @@ fasttrib_points <- function(
   check_ihydro(input)
 
   stopifnot(mem_fraction < 0.9 | mem_fraction > 0.1)
+  if (is.null(n_batches)) {
+    n_batches <- 1L
+  } else {
+    stopifnot(is.numeric(n_batches))
+  }
 
   loi_numeric_stats <- match.arg(
     loi_numeric_stats,
@@ -342,7 +341,7 @@ fasttrib_points <- function(
     iDW_cols = weighting_scheme,
     max_cells_in_memory = max_cells_in_memory,
     n_cores = n_cores,
-    chunks_per_worker = 1L,
+    chunks_per_worker = n_batches,
     fun = c(
       "mean",
       "sd",
