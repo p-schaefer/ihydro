@@ -9,7 +9,7 @@
 #' @param ihydro_obj An iHydro object
 #' @param obs A data frame of observed site data with a link_id column
 #' @param pred A data frame of predicted site data with a link_id column
-#' @param temp_dir Temporary file directory.
+#' @param lsn_path Pathname to a directory in character format specifying where to store the outputs. The directory will be created if it does not already exist..
 #' @param verbose Logical.
 #'
 #' @return An SSN object containing the stream network and site data
@@ -20,7 +20,7 @@ ihydro_to_ssn <- function(
     ihydro_obj,
     obs = NULL,
     pred = NULL,
-    temp_dir = NULL,
+    lsn_path = NULL,
     verbose = FALSE
 ) {
   check_ihydro(ihydro_obj)
@@ -28,17 +28,17 @@ ihydro_to_ssn <- function(
   n_cores <- n_workers()
   site_list <- .prep_sites(ihydro_obj, obs, pred)
 
-  if (is.null(temp_dir)) {
-    temp_dir <- tempdir()
+  if (is.null(lsn_path)) {
+    lsn_path <- tempdir()
   }
 
-  lsn.path <- file.path(temp_dir, "lsn_files")
+  lsn.path <- file.path(lsn_path, "lsn_files")
   dir.create(lsn.path, showWarnings = FALSE)
 
   edges <- .prep_edges(
     ihydro_obj,
     n_cores = n_cores,
-    temp_dir = lsn.path,
+    lsn_path = lsn_path,
     verbose = verbose
   )
 
@@ -46,7 +46,7 @@ ihydro_to_ssn <- function(
     site_list[["pred"]] <- SSNbler::sites_to_lsn(
       sites = site_list[["pred"]],
       edges = edges,
-      lsn_path = lsn.path,
+      lsn_path = lsn_path,
       file_name = "pred",
       snap_tolerance = Inf,
       save_local = TRUE,
@@ -59,7 +59,7 @@ ihydro_to_ssn <- function(
     site_list[["obs"]] <- SSNbler::sites_to_lsn(
       sites = site_list[["obs"]],
       edges = edges,
-      lsn_path = lsn.path,
+      lsn_path = lsn_path,
       file_name = "obs",
       snap_tolerance = Inf,
       save_local = TRUE,
@@ -73,7 +73,7 @@ ihydro_to_ssn <- function(
     edges = edges,
     length_col = "Length",
     save_local = TRUE,
-    lsn_path = lsn.path
+    lsn_path = lsn_path
   )
 
   snn_site_list <- SSNbler::afv_sites(
@@ -81,16 +81,16 @@ ihydro_to_ssn <- function(
     edges = edges,
     afv_col = "afvArea",
     save_local = TRUE,
-    lsn_path = lsn.path
+    lsn_path = lsn_path
   )
 
   # Assemble SSN object
   ssn_obj <- SSNbler::ssn_assemble(
     edges = edges,
-    lsn_path = lsn.path,
+    lsn_path = lsn_path,
     obs_sites = snn_site_list$obs,
     preds_list = snn_site_list[!"obs" %in% names(snn_site_list)],
-    ssn_path = paste0(lsn.path, "/ihydro.ssn"),
+    ssn_path = paste0(lsn_path, "/ihydro.ssn"),
     import = TRUE,
     check = TRUE,
     afv_col = "afvArea",
@@ -105,14 +105,14 @@ ihydro_to_ssn <- function(
 #' Convert iHydro stream data to lsn format
 #' @param ihydro_obj An iHydro object
 #' @param n_cores Number of cores to use for parallel processing
-#' @param temp_dir Temporary directory to save intermediate files
+#' @param lsn_path Directory to save intermediate files
 #' @param verbose Whether to print progress messages
 #' @return A sf object of edges in lsn format
 #' @noRd
 .prep_edges <- function(
     ihydro_obj,
     n_cores = 1L,
-    temp_dir = NULL,
+    lsn_path = NULL,
     verbose = FALSE
 ) {
   check_ihydro(ihydro_obj)
@@ -135,7 +135,7 @@ ihydro_to_ssn <- function(
 
   edges <- SSNbler::lines_to_lsn(
     streams = lns,
-    lsn_path = temp_dir,
+    lsn_path = lsn_path,
     check_topology = TRUE,
     snap_tolerance = sqrt(res[[1]])/8,
     topo_tolerance = sqrt(res[[1]])/8,
@@ -145,7 +145,7 @@ ihydro_to_ssn <- function(
     verbose = verbose
   )
 
-  err_fl <- file.path(temp_dir, "node_errors.gpkg")
+  err_fl <- file.path(lsn_path, "node_errors.gpkg")
   if (file.exists(err_fl)) {
     if (verbose) {
       message("Attempting to fix topology errors")
@@ -228,7 +228,7 @@ ihydro_to_ssn <- function(
     # Edges
     edges <- SSNbler::lines_to_lsn(
       streams = lns,
-      lsn_path = temp_dir,
+      lsn_path = lsn_path,
       check_topology = TRUE,
       snap_tolerance = sqrt(res[[1]])/8,
       topo_tolerance = sqrt(res[[1]])/8,
@@ -254,7 +254,7 @@ ihydro_to_ssn <- function(
   edges <- SSNbler::updist_edges(
     edges = edges,
     save_local = TRUE,
-    lsn_path = temp_dir,
+    lsn_path = lsn_path,
     calc_length = TRUE,
     verbose = verbose
   )
@@ -264,7 +264,7 @@ ihydro_to_ssn <- function(
     infl_col = "area",
     segpi_col = "areaPI",
     afv_col = "afvArea",
-    lsn_path = temp_dir
+    lsn_path = lsn_path
   )
 
   return(edges)
@@ -293,6 +293,9 @@ ihydro_to_ssn <- function(
   sites <- read_ihydro(ihydro_obj, "stream_links")
 
   if (!is.null(obs)) {
+    if (inherits(obs, "sf")) {
+      cli::cli_abort("{.arg obs} must not be a class {.cls sf}")
+    }
     if (!inherits(obs, "data.frame")) {
       cli::cli_abort("{.arg obs} must be a {.cls data.frame}")
     }
@@ -307,6 +310,8 @@ ihydro_to_ssn <- function(
       ))
     }
 
+    obs$link_id <- as.character(obs$link_id)
+
     site_list$obs <- dplyr::left_join(
       sites,
       obs,
@@ -314,6 +319,9 @@ ihydro_to_ssn <- function(
     )
   }
   if (!is.null(pred)) {
+    if (inherits(pred, "sf")) {
+      cli::cli_abort("{.arg obs} must not be a class {.cls sf}")
+    }
     if (!inherits(pred, "data.frame")) {
       cli::cli_abort("{.arg pred} must be a {.cls data.frame}")
     }
@@ -327,6 +335,8 @@ ihydro_to_ssn <- function(
         "x" = "{.code link_id}s: {.val {missing_links}}"
       ))
     }
+
+    pred$link_id <- as.character(pred$link_id)
 
     site_list$pred <- dplyr::left_join(
       sites,
