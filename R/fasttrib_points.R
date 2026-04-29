@@ -920,6 +920,12 @@ fasttrib_points <- function(
     )
   }
 
+  max_cells_in_memory <- floor(max_cells_in_memory / n_cores)
+  if (max_cells_in_memory >= .Machine$integer.max) {
+    max_cells_in_memory <- .Machine$integer.max - 1
+  }
+
+
   n_jobs <- n_cores * chunks_per_worker
   n_jobs <- min(n_jobs, length(unique(subb_ids$link_id)))
 
