@@ -152,18 +152,25 @@ prep_weights <- function(
           link_type == "Sink Node"
         )
         target_O <- target_O[, "link_id", drop = FALSE]
-        target_O <- terra::rasterize(
-          terra::vect(target_O),
-          targ_rast,
-          field = "",
-          overwrite = TRUE,
-          filename = file.path(temp_dir, paste0("target_O.tif")),
-          wopt = list(datatype = "FLT4S", gdal = c("COMPRESS=NONE"))
+        target_O$link_id <- 1L
+
+        sf::write_sf(
+          target_O,
+          file.path(temp_dir, paste0("target_O.shp"))
+        )
+
+        whitebox::wbt_vector_points_to_raster(
+          input = file.path(temp_dir, paste0("target_O.shp")),
+          output = file.path(temp_dir, paste0("target_O.tif")),
+          base = file.path(temp_dir, paste0(lyr_sel[[1]], ".tif")),
+          field = "link_id",
+          verbose_mode = FALSE,
+          compress_rasters = FALSE
         )
       }
     }
     if (lyr == "dem_accum_d8") {
-      flow_accum <- targ_rast + 1
+      flow_accum <- terra::app(targ_rast, fun = function(x) x + 1)
     }
 
     terra::writeRaster(

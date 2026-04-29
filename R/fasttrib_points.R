@@ -630,6 +630,8 @@ fasttrib_points <- function(
     iDW_idxnm <- paste0(iDW_idx, "_", rep(x_cols, length.out = length(iDW_idx)))
 
     all_rast2 <- list()
+
+    gc(verbose = FALSE)
     for (i in iDW_idx) {
       idx <- length(all_rast2) + 1
       all_rast2[[idx]] <- all_rasts[[i]]
