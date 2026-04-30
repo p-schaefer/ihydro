@@ -89,7 +89,7 @@ ihydro_to_ssn <- function(
     edges = edges,
     lsn_path = lsn_path,
     obs_sites = snn_site_list$obs,
-    preds_list = snn_site_list[!"obs" %in% names(snn_site_list)],
+    preds_list = snn_site_list[names(snn_site_list) != "obs"],
     ssn_path = paste0(lsn_path, "/ihydro.ssn"),
     import = TRUE,
     check = TRUE,
@@ -312,7 +312,7 @@ ihydro_to_ssn <- function(
 
     obs$link_id <- as.character(obs$link_id)
 
-    site_list$obs <- dplyr::left_join(
+    site_list$obs <- dplyr::right_join(
       sites,
       obs,
       by = "link_id"
@@ -338,7 +338,7 @@ ihydro_to_ssn <- function(
 
     pred$link_id <- as.character(pred$link_id)
 
-    site_list$pred <- dplyr::left_join(
+    site_list$pred <- dplyr::right_join(
       sites,
       pred,
       by = "link_id"
