@@ -149,7 +149,7 @@ prep_weights <- function(
         )
         target_O <- dplyr::filter(
           target_O,
-          link_type == "Sink Node"
+          is.na(dslink_id1)
         )
         target_O <- target_O[, "link_id", drop = FALSE]
         target_O$link_id <- 1L

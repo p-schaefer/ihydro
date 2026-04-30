@@ -284,10 +284,10 @@ fasttrib_points <- function(
   missing_layers <- setdiff(weighting_scheme, idw_layers)
   missing_layers <- missing_layers[missing_layers != "lumped"]
   if (length(missing_layers) > 0L) {
-      cli::cli_abort(c(
-        "The following weighting layers are missing from iDW_file: ",
-        "x" = "{.val {missing_layers}}"
-      ))
+    cli::cli_abort(c(
+      "The following weighting layers are missing from iDW_file: ",
+      "x" = "{.val {missing_layers}}"
+    ))
   }
 
   # ─ Build subbasin lookup ────────────────────────
@@ -298,10 +298,10 @@ fasttrib_points <- function(
     dplyr::filter(link_lngth > 0) |> # small catchments without streams
     dplyr::filter(link_id %in% target_ids$link_id) |> # small catchments without streams
     dplyr::select(link_id, tidyselect::any_of(site_id_col), USChnLn_To) #|>
-    #dplyr::left_join(
-    #  dplyr::mutate(unnest_catchment, link_id = as.character(link_id)),
-    #  by = c("link_id")
-    #)
+  #dplyr::left_join(
+  #  dplyr::mutate(unnest_catchment, link_id = as.character(link_id)),
+  #  by = c("link_id")
+  #)
 
   #subb_ids <- subb_ids[!is.na(subb_ids$unn_group), ]
 
@@ -331,6 +331,8 @@ fasttrib_points <- function(
   cat_rast <- loi_meta$loi_var_nms[loi_meta$loi_type == "cat_rast"]
 
   # Setup and execute parallel extraction of attributes for each subbasin
+  fun_sel <- unique(c("sum",loi_numeric_stats))
+
   sub_summ <- .extract_planner(
     input = input,
     subb_ids = subb_ids,
@@ -342,18 +344,7 @@ fasttrib_points <- function(
     max_cells_in_memory = max_cells_in_memory,
     n_cores = n_cores,
     chunks_per_worker = n_batches,
-    fun = c(
-      "mean",
-      "sd",
-      "var",
-      "cv",
-      "min",
-      "max",
-      "sum",
-      "count",
-      "median",
-      "quantile"
-    ),
+    fun = fun_sel,
     quantiles = NULL,
     temp_dir = temp_dir,
     verbose = verbose
@@ -705,7 +696,7 @@ fasttrib_points <- function(
 
 #' Extract raster attributes for a set of subbassins (for parallel)
 #' @noRd
-.extract_subbasins <- carrier::crate(
+.extract_subbasins <- #carrier::crate(
   function(
     input_file,
     link_id,
@@ -880,7 +871,7 @@ fasttrib_points <- function(
       extra_out
     )
   }
-)
+#)
 
 #' Create subbasin extraction plan
 #' @noRd
@@ -911,6 +902,9 @@ fasttrib_points <- function(
     temp_dir = NULL,
     verbose = FALSE
 ) {
+
+  fun <- match.arg(fun,several.ok = TRUE)
+
   safe_kmeans <- function(x, centers, ...) {
     x0 <- x
 
