@@ -540,9 +540,9 @@ burn_dem <- function(
   gdal_arg
 ) {
   bbox <- terra::as.polygons(terra::ext(dem), crs = target_crs)
-
-  resol <- terra::cellSize(dem, unit = "m")
-  resol <- unlist(terra::global(resol, "mean"), use.names = F)
+  # resol <- terra::cellSize(dem, unit = "m")
+  # resol <- unlist(terra::global(resol, "mean"), use.names = F)
+  resol <- terra::res(dem)[[1]]
   resol <- sqrt(resol)
 
   if (is.null(burn_slope_dist)) {
@@ -560,7 +560,7 @@ burn_dem <- function(
   }
 
   burn_streams <- process_input(
-    burn_streams[, 1],
+    burn_streams,
     align_to = terra::as.lines(
       terra::vect(
         "POLYGON ((0 -5, 10 0, 10 -10, 0 -5))",
@@ -570,6 +570,7 @@ burn_dem <- function(
     clip_region = bbox,
     working_dir = temp_dir
   )
+  burn_streams <- burn_stream[, 1]
 
   rast_streams <- process_input(
     burn_streams[, 1],
