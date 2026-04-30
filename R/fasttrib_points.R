@@ -163,7 +163,7 @@
 
 fasttrib_points <- function(
     input,
-    out_filename,
+    out_filename = NULL,
     loi_file = NULL,
     loi_cols = NULL,
     iDW_file = NULL,
@@ -435,11 +435,19 @@ fasttrib_points <- function(
   )
 
   result <- subb_ids |>
-    dplyr::select(, link_id, tidyselect::any_of(site_id_col)) |>
+    dplyr::select(link_id, tidyselect::any_of(site_id_col)) |>
     dplyr::left_join(
       result,
       by = "link_id"
     )
+
+  if (!is.null(out_filename)){
+    write.csv(
+      result,
+      out_filename
+    )
+  }
+
 
   return(result)
 }
