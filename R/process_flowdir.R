@@ -570,7 +570,7 @@ burn_dem <- function(
     clip_region = bbox,
     working_dir = temp_dir
   )
-  burn_streams <- burn_stream[, 1]
+  burn_streams <- burn_streams[, 1]
 
   rast_streams <- process_input(
     burn_streams[, 1],
