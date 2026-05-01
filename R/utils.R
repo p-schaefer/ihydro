@@ -719,6 +719,24 @@ stop_on_future_errors <- function(
   return(max_mem)
 }
 
+
+#' @noRd
+.max_cells_in_memory_helper <- function(
+    n_cores = 1L,
+    mem_fraction = 0.5
+) {
+  max_mem <- memuse::Sys.meminfo()$totalram * mem_fraction
+  max_square <- memuse::howmany(max_mem)
+  max_cells_in_memory <- max_square[[1]] * max_square[[2]]
+
+  max_cells_in_memory <- floor(max_cells_in_memory / n_cores)
+  if (max_cells_in_memory >= .Machine$integer.max) {
+    max_cells_in_memory <- .Machine$integer.max - 1
+  }
+  return(max_cells_in_memory)
+}
+
+#' @noRd
 .rem_na_helper <- function(...) {
   args <- list(...)
   nms <- match.call(expand.dots = FALSE)$`...`

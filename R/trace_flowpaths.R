@@ -448,7 +448,7 @@ unnest_catchments <- function(input) {
   g <- igraph::graph_from_adjacency_matrix(adj, mode = "undirected")
   groups <- igraph::greedy_vertex_coloring(g)
   group_meta <- data.frame(
-    link_id = rownames(fp),
+    link_id = names(groups),
     unn_group = groups
   ) |>
     dplyr::group_by(unn_group) |>

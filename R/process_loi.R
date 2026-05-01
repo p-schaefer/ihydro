@@ -503,7 +503,7 @@ process_single_loi_worker <- carrier::crate(
     }
 
     suppressMessages(
-      output <- ihydro::process_input(
+      output <- ihydro:::process_input(
         input = unlist(lyr),
         input_variable_names = if (!is.null(lyr_variables)) {
           unlist(lyr_variables)

@@ -6,21 +6,19 @@
 \usage{
 fasttrib_points(
   input,
-  out_filename,
+  out_filename = NULL,
   loi_file = NULL,
   loi_cols = NULL,
   iDW_file = NULL,
-  store_iDW = FALSE,
   sample_points = NULL,
   link_id = NULL,
-  target_o_type = c("point", "segment_point", "segment_whole"),
   weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"),
   loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
-  inv_function = NULL,
-  write_strategy = NULL,
   mem_fraction = 0.5,
+  n_batches = NULL,
   temp_dir = NULL,
-  verbose = FALSE
+  verbose = FALSE,
+  ...
 )
 }
 \arguments{
@@ -36,14 +34,9 @@ Defaults to the layers inside \code{input}.}
 \item{iDW_file}{Optional \code{ihydro} object or \code{.gpkg} path for pre-computed
 inverse-distance weights. If \code{NULL}, weights are computed on the fly.}
 
-\item{store_iDW}{Logical. If \code{TRUE} and \code{iDW_file} is \code{NULL}, weights are
-written into the \code{input} GeoPackage.}
-
 \item{sample_points}{Character vector of site IDs, or \code{NULL} for all.}
 
 \item{link_id}{Character vector of link IDs, or \code{NULL}.}
-
-\item{target_o_type}{One of \code{"point"}, \code{"segment_point"}, \code{"segment_whole"}.}
 
 \item{weighting_scheme}{Character vector. Any of \code{"lumped"}, \code{"iFLS"},
 \code{"HAiFLS"}, \code{"iFLO"}, \code{"HAiFLO"}.}
@@ -51,20 +44,15 @@ written into the \code{input} GeoPackage.}
 \item{loi_numeric_stats}{Character vector. Any of \code{"mean"}, \code{"sd"},
 \code{"median"}, \code{"min"}, \code{"max"}, \code{"sum"}.}
 
-\item{inv_function}{Inverse-distance function (see \code{\link[=prep_weights]{prep_weights()}}).}
-
-\item{write_strategy}{Character. How processed weight rasters are written to the
-GeoPackage. \code{"sequential"} (default) waits for all parallel workers to
-finish, then writes every raster in one pass. \code{"batched"} processes unnest
-groups in chunks, writing to the GeoPackage between chunks to reduce peak
-temporary disk usage.}
-
 \item{mem_fraction}{Numeric. Value between 0.1 and 0.9 (larger values give a warning).
 The fraction of RAM that may be used by the program.}
 
 \item{temp_dir}{Temporary directory for intermediate files.}
 
 \item{verbose}{Logical.}
+
+\item{store_iDW}{Logical. If \code{TRUE} and \code{iDW_file} is \code{NULL}, weights are
+written into the \code{input} GeoPackage.}
 }
 \value{
 A data.frame of weighted attributes, also written to \code{out_filename}.

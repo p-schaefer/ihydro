@@ -34,6 +34,7 @@ The contained tables in the output GeoPackage are:
 \item \code{us_flowpaths}: Upstream flowpaths for each link.
 \item \code{funcon_pwise_dist}: Pairwise flow-unconnected distances between links (if \code{pwise_dist = TRUE}).
 \item \code{fcon_pwise_dist}: Pairwise flow-connected distances between links (if \code{pwise_dist = TRUE}).
+\item \code{unnest_catchment}: Unnested catchment areas such that link_ids in each unn_group* do not contain any overlapping subbasin.
 The function returns an \code{ihydro} object containing references to the flowpath tables, which can be accessed using \code{\link[=read_ihydro]{read_ihydro()}} or listed with \code{\link[=ihydro_layers]{ihydro_layers()}}.
 }
 }

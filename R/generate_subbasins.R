@@ -87,7 +87,7 @@ generate_subbasins <- function(
   # ── Split subbasins at sampling points ──────────────────────────────────
   if (!is.null(points)) {
     if (verbose) {
-      message("Splitting subbasins")
+      message("Splitting subbasins at sampling points")
     }
     stream_links <- read_links(con, input, site_id_col) |>
       dplyr::mutate(link_id = as.numeric(link_id))

@@ -8,7 +8,7 @@ ihydro_to_ssn(
   ihydro_obj,
   obs = NULL,
   pred = NULL,
-  temp_dir = NULL,
+  lsn_path = NULL,
   verbose = FALSE
 )
 }
@@ -19,7 +19,7 @@ ihydro_to_ssn(
 
 \item{pred}{A data frame of predicted site data with a link_id column}
 
-\item{temp_dir}{Temporary file directory.}
+\item{lsn_path}{Pathname to a directory in character format specifying where to store the outputs. The directory will be created if it does not already exist..}
 
 \item{verbose}{Logical.}
 }

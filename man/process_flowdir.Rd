@@ -9,6 +9,7 @@ process_flowdir(
   threshold,
   burn_streams = NULL,
   stream_keep_thresh = NULL,
+  chunk_size = 250,
   stream_keep_burnbuff = 25,
   stream_keep_dembuff = 1,
   burn_depth = NULL,
