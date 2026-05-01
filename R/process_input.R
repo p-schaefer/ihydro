@@ -43,7 +43,8 @@ process_input <- function(
   # Coerce input to terra object
   if (is.character(input)) {
     if (grepl("\\.shp$", input, ignore.case = TRUE)) {
-      output <- terra::vect(input)
+      output <- sf::read_sf(input)
+      output <- terra::vect(output)
     } else if (grepl("\\.(tif|tiff)$", input, ignore.case = TRUE)) {
       output <- terra::rast(input)
     } else {
