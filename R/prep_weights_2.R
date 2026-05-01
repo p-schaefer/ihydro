@@ -460,10 +460,6 @@ prep_weights <- function(
 
     if ("HAiFLO" %in% weighting_scheme) {
       flow_accum <- terra::rast(input_file, "dem_accum_d8")
-      flow_accum <- terra::crop(
-        flow_accum,
-        terra::vect(catchments)
-      )
 
       HAiFLO_inv <- iFLO_inv * flow_accum
       names(HAiFLO_inv) <-paste0("HAiFLO_unn_group",unn_group)
