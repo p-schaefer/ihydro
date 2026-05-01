@@ -472,7 +472,7 @@ prep_weights <- function(
       out_rasts,
       filename = outfile,
       overwrite = TRUE,
-      datatype = "INT4U",
+      datatype = "FLT4S",
       gdal = c("COMPRESS=NONE")
     )
 

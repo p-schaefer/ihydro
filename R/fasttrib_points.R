@@ -333,8 +333,6 @@ fasttrib_points <- function(
   # Setup and execute parallel extraction of attributes for each subbasin
   fun_sel <- unique(c("sum",loi_numeric_stats))
 
-  browser()
-
   sub_summ <- .extract_planner(
     input = input,
     subb_ids = subb_ids,
@@ -388,35 +386,100 @@ fasttrib_points <- function(
   extract_value_comb <- list()
   extract_value_nms <- names(extract_value)
   ws_s_nms <- extract_value_nms[grepl("^ws_s\\.", extract_value_nms)]
-  ws_o_nms <- extract_value_nms[grepl("^ws_o\\.", extract_value_nms)]
+  #ws_o_nms <- extract_value_nms[grepl("^ws_o\\.", extract_value_nms)]
   ws_lump_nms <- extract_value_nms[grepl("^ws_lump\\.", extract_value_nms)]
 
-  extract_value_comb$ws_s <- dplyr::bind_rows(extract_value[ws_s_nms])
-  extract_value_comb$ws_o <- dplyr::bind_rows(extract_value[ws_o_nms])
+  extract_value_comb$ws_s <- tibble::tibble()
+  extract_value_comb$ws_o <- tibble::tibble()
   extract_value_comb$ws_lump <- dplyr::bind_rows(extract_value[ws_lump_nms])
 
   if (length(ws_s_nms) > 0) {
-    extract_value_comb$ws_s <- dplyr::left_join(
-      dplyr::rename(
+    temp_comb <- list()
+    ws_comb <- dplyr::bind_rows(extract_value[ws_s_nms])
+
+    if (any(grepl("iFLO",weighting_scheme))) {
+      o_targ <- dplyr::select(
+        ws_comb,
+        tidyselect::contains(c("iFLO","HAiFLO")),
+        subbasin_link_id,
+        -link_id_otarget
+      )
+
+      wo_comb <- tidyr::pivot_longer(
+        o_targ,
+        tidyselect::contains(c("iFLO","HAiFLO"))
+      ) |>
+        dplyr::mutate(
+          type = dplyr::case_when(
+            grepl("HAiFLO",name) ~ "HAiFLO",
+            T ~ "iFLO"
+          ),
+          unn_group = strsplit(name,"iFLO_unn_group"),
+          unn_group = purrr::map_chr(unn_group,~.x[[2]])
+        ) |>
+        dplyr::mutate(
+          name2 = gsub("_unn_group.*\\.",".",name),
+          unn_group = gsub("\\..*$","",unn_group),
+          name = dplyr::case_when(
+            name2 == name ~ gsub("_unn_group.*","",name),
+            T ~ name2
+          )
+        ) |>
+        dplyr::select(unn_group,tidyselect::everything(),-name2, - type) |>
+        tidyr::pivot_wider()
+
+      unn_group_lookup <- dplyr::rename(
         subb_lookup,
         subbasin_link_id = link_id,
         link_id_otarget = final_link_id
-      ),
-      dplyr::select(
-        extract_value_comb$ws_s,
-        -link_id_otarget
-      ),
-      by = "subbasin_link_id"
+      )
+
+      unn_group_lookup <- dplyr::left_join(
+        unn_group_lookup,
+        dplyr::select(subb_ids, link_id_otarget = link_id, unn_group),
+        by = "link_id_otarget"
+      )
+
+      temp_comb$ws_o <- dplyr::left_join(
+        unn_group_lookup,
+        wo_comb,
+        by = c("subbasin_link_id", "unn_group")
+      )
+
+    }
+
+    if (any(grepl("iFLS",weighting_scheme))) {
+      temp_comb$ws_s <- dplyr::left_join(
+        dplyr::rename(
+          subb_lookup,
+          subbasin_link_id = link_id,
+          link_id_otarget = final_link_id
+        ),
+        dplyr::select(
+          ws_comb,
+          -tidyselect::contains(c(".iFLO",".HAiFLO")),
+          subbasin_link_id,
+          -link_id_otarget
+        ),
+        by = "subbasin_link_id"
+      )
+    }
+
+    extract_value_comb$ws_s <- purrr::reduce(
+      temp_comb,
+      dplyr::left_join,
+      by = c("link_id_otarget", "subbasin_link_id")
     )
+
   }
 
-  if (length(ws_o_nms) > 0) {
-    extract_value_comb$ws_o <- extract_value_comb$ws_o |>
-      dplyr::left_join(
-        dplyr::select(subb_ids, link_id, unn_group),
-        by = c("link_id_otarget" = "link_id")
-      )
-  }
+  # if (length(ws_o_nms) > 0) {
+  #   extract_value_comb$ws_o <- extract_value_comb$ws_o |>
+  #     dplyr::left_join(
+  #       dplyr::select(subb_ids, link_id, unn_group),
+  #       by = c("link_id_otarget" = "link_id")
+  #     )
+  # }
 
   # Summarize catchment attributes and join with target IDs
   result <- .summarize_catchment(
@@ -692,7 +755,7 @@ fasttrib_points <- function(
 
 #' Extract raster attributes for a set of subbassins (for parallel)
 #' @noRd
-.extract_subbasins <- #carrier::crate(
+.extract_subbasins <- carrier::crate(
   function(
     input_file,
     link_id,
@@ -713,7 +776,6 @@ fasttrib_points <- function(
     include_count = FALSE,
     progressor = NULL
   ) {
-    browser()
     catch_source <- match.arg(catch_source)
 
     subbasins <- sf::read_sf(
@@ -879,7 +941,7 @@ fasttrib_points <- function(
       extra_out
     )
   }
-#)
+)
 
 #' Create subbasin extraction plan
 #' @noRd
@@ -1237,7 +1299,7 @@ fasttrib_points <- function(
       }
     }
     # S-targeted iDW
-    for (ws in intersect(weighting_scheme, c("iFLS", "HAiFLS"))) {
+    for (ws in intersect(weighting_scheme, c("iFLS", "HAiFLS", "iFLO", "HAiFLO"))) {
       for (var in numeric_vars) {
         mean_col <- paste0("weighted_mean.", var, ".", ws)
         var_col <- paste0("weighted_variance.", var, ".", ws)
@@ -1295,96 +1357,96 @@ fasttrib_points <- function(
     tibble::as_tibble(res)
   }
 
-  # Summarize ws_o (O-targeted iDW only)
-  summarize_ws_o <- function(df) {
-    gp <- unique(df$unn_group)
-    gp <- gp[!is.na(gp)]
-    gp <- paste0("_unn_group", gp)
-    res <- list()
-    for (ws in intersect(weighting_scheme, c("iFLO", "HAiFLO"))) {
-      for (var in numeric_vars) {
-        mean_col <- paste0("weighted_mean.", var, ".", ws, gp)
-        var_col <- paste0("weighted_variance.", var, ".", ws, gp)
-        sum_col <- paste0("weighted_sum.", var, ".", ws, gp)
-        wt_col <- paste0("weighted_sum.", ws, gp, ".", var)
-        cnt_col <- "count.count_internal"
-        if (all(c(mean_col, var_col, wt_col) %in% names(df))) {
-          sub_mean <- df[[mean_col]]
-          sub_var <- df[[var_col]]
-          sub_wt <- df[[wt_col]]
-          sub_cnt <- df[[cnt_col]]
-          if ("mean" %in% loi_numeric_stats) {
-            res[[paste0(var, "_", ws, "_mean")]] <- combine_weighted_mean(
-              sub_mean,
-              sub_wt,
-              sub_cnt
-            )
-          }
-          if ("sd" %in% loi_numeric_stats) {
-            res[[paste0(var, "_", ws, "_sd")]] <- combine_weighted_sample_sd(
-              sub_mean,
-              sub_var,
-              sub_wt,
-              sub_cnt
-            )
-          }
-          if ("var" %in% loi_numeric_stats) {
-            res[[paste0(var, "_", ws, "_var")]] <- combine_weighted_sample_var(
-              sub_mean,
-              sub_var,
-              sub_wt,
-              sub_cnt
-            )
-          }
-          if ("sum" %in% loi_numeric_stats && sum_col %in% names(df)) {
-            res[[paste0(var, "_", ws, "_sum")]] <- sum(
-              df[[sum_col]],
-              na.rm = TRUE
-            )
-          }
-        }
-      }
-      for (cat in cat_vars) {
-        sum_col <- paste0("weighted_sum.", cat, ".", ws, gp)
-        wt_col <- paste0("sum.", ws, gp)
-        if (sum_col %in% names(df) && wt_col %in% names(df)) {
-          res[[paste0(cat, "_", ws, "_prop")]] <- sum(
-            df[[sum_col]],
-            na.rm = TRUE
-          ) /
-            sum(df[[wt_col]], na.rm = TRUE)
-        }
-      }
-    }
-    tibble::as_tibble(res)
-  }
+  # # Summarize ws_o (O-targeted iDW only)
+  # summarize_ws_o <- function(df) {
+  #   gp <- unique(df$unn_group)
+  #   gp <- gp[!is.na(gp)]
+  #   gp <- paste0("_unn_group", gp)
+  #   res <- list()
+  #   for (ws in intersect(weighting_scheme, c("iFLO", "HAiFLO"))) {
+  #     for (var in numeric_vars) {
+  #       mean_col <- paste0("weighted_mean.", var, ".", ws, gp)
+  #       var_col <- paste0("weighted_variance.", var, ".", ws, gp)
+  #       sum_col <- paste0("weighted_sum.", var, ".", ws, gp)
+  #       wt_col <- paste0("weighted_sum.", ws, gp, ".", var)
+  #       cnt_col <- "count.count_internal"
+  #       if (all(c(mean_col, var_col, wt_col) %in% names(df))) {
+  #         sub_mean <- df[[mean_col]]
+  #         sub_var <- df[[var_col]]
+  #         sub_wt <- df[[wt_col]]
+  #         sub_cnt <- df[[cnt_col]]
+  #         if ("mean" %in% loi_numeric_stats) {
+  #           res[[paste0(var, "_", ws, "_mean")]] <- combine_weighted_mean(
+  #             sub_mean,
+  #             sub_wt,
+  #             sub_cnt
+  #           )
+  #         }
+  #         if ("sd" %in% loi_numeric_stats) {
+  #           res[[paste0(var, "_", ws, "_sd")]] <- combine_weighted_sample_sd(
+  #             sub_mean,
+  #             sub_var,
+  #             sub_wt,
+  #             sub_cnt
+  #           )
+  #         }
+  #         if ("var" %in% loi_numeric_stats) {
+  #           res[[paste0(var, "_", ws, "_var")]] <- combine_weighted_sample_var(
+  #             sub_mean,
+  #             sub_var,
+  #             sub_wt,
+  #             sub_cnt
+  #           )
+  #         }
+  #         if ("sum" %in% loi_numeric_stats && sum_col %in% names(df)) {
+  #           res[[paste0(var, "_", ws, "_sum")]] <- sum(
+  #             df[[sum_col]],
+  #             na.rm = TRUE
+  #           )
+  #         }
+  #       }
+  #     }
+  #     for (cat in cat_vars) {
+  #       sum_col <- paste0("weighted_sum.", cat, ".", ws, gp)
+  #       wt_col <- paste0("sum.", ws, gp)
+  #       if (sum_col %in% names(df) && wt_col %in% names(df)) {
+  #         res[[paste0(cat, "_", ws, "_prop")]] <- sum(
+  #           df[[sum_col]],
+  #           na.rm = TRUE
+  #         ) /
+  #           sum(df[[wt_col]], na.rm = TRUE)
+  #       }
+  #     }
+  #   }
+  #   tibble::as_tibble(res)
+  # }
 
   # Main logic
   result <- list()
-  if (!is.null(extract_value$ws_lump)) {
+  if (!is.null(extract_value$ws_lump) && nrow(extract_value$ws_lump) > 0) {
     ws_lump <- clean_data(extract_value$ws_lump)
     result$ws_lump <- ws_lump |>
       dplyr::group_by(link_id_otarget) |>
       tidyr::nest() |>
       dplyr::mutate(summary = purrr::map(data, summarize_ws_lump))
   }
-  if (!is.null(extract_value$ws_s)) {
+  if (!is.null(extract_value$ws_s) && nrow(extract_value$ws_s) > 0) {
     ws_s <- clean_data(extract_value$ws_s)
     result$ws_s <- ws_s |>
       dplyr::group_by(link_id_otarget) |>
       tidyr::nest() |>
       dplyr::mutate(summary = purrr::map(data, summarize_ws_s))
   }
-  if (!is.null(extract_value$ws_o)) {
-    ws_o <- clean_data(extract_value$ws_o)
-    result$ws_o <- ws_o |>
-      dplyr::bind_rows(
-        dplyr::select(ws_s, count.count_internal)
-      ) |>
-      dplyr::group_by(link_id_otarget) |>
-      tidyr::nest() |>
-      dplyr::mutate(summary = purrr::map(data, summarize_ws_o))
-  }
+  # if (!is.null(extract_value$ws_o)) {
+  #   ws_o <- clean_data(extract_value$ws_o)
+  #   result$ws_o <- ws_o |>
+  #     dplyr::bind_rows(
+  #       dplyr::select(ws_s, count.count_internal)
+  #     ) |>
+  #     dplyr::group_by(link_id_otarget) |>
+  #     tidyr::nest() |>
+  #     dplyr::mutate(summary = purrr::map(data, summarize_ws_o))
+  # }
 
   # Unnest and join all summaries
   result <- purrr::map(

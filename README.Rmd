@@ -998,9 +998,9 @@ fasttrib_points_time <- system.time(
   )
 )
 
-paste0("prep_weights() took ",round(dw_time[3] / 60, 2) ," minues with ",future::nbrOfWorkers()," cores.")
+paste0("prep_weights() took ",round(dw_time[3] / 60, 2) ," minutes with ",future::nbrOfWorkers()," cores.")
 
-paste0("fasttrib_points() took ",round(fasttrib_points_time[3] / 60, 2) ," minues with ",future::nbrOfWorkers()," cores.")
+paste0("fasttrib_points() took ",round(fasttrib_points_time[3] / 60, 2) ," minutes with ",future::nbrOfWorkers()," cores.")
 
 ```
 
