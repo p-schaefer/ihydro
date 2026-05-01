@@ -220,9 +220,8 @@ process_loi <- function(
 
   # Clip region
   if (is.null(clip_region)) {
-    clip_region <- terra::as.polygons(
-      terra::rast(terra::ext(dem), crs = terra::crs(dem))
-    )
+    clip_region <- terra::clamp(dem,1,1)
+    clip_region <- terra::as.polygons(clip_region)
   } else {
     clip_region <- process_input(
       clip_region,

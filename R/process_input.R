@@ -103,34 +103,6 @@ process_input <- function(
       )
     }
 
-    # Clip / mask if requested
-    if (!is.null(clip_region)) {
-      align_crs <- sf::st_crs(output)
-      if (!is.null(align_to)) {
-        align_crs <- sf::st_crs(align_to)
-      }
-      cr <- process_input(
-        input = clip_region,
-        align_to = terra::vect(sf::st_as_sfc(
-          "POLYGON ((0 -5, 10 0, 10 -10, 0 -5))",
-          crs = align_crs
-        )),
-        working_dir = working_root
-      )
-      if (inherits(output, "SpatVector")) {
-        output <- terra::crop(output, cr)
-      } else if (inherits(output, "SpatRaster")) {
-        output <- terra::crop(
-          x = output,
-          y = cr,
-          snap = snap,
-          mask = TRUE,
-          overwrite = TRUE
-        )
-        output <- terra::mask(output, cr, overwrite = TRUE)
-      }
-    }
-
     # Align vector -> raster or raster -> raster
     did_categorical_rasterization <- FALSE # flag to track if we did categorical rasterization for later splitting
     if (inherits(align_to, "SpatRaster")) {
@@ -223,8 +195,36 @@ process_input <- function(
         output <- terra::project(output, align_to, ...)
       }
     }
+
   }
 
+  # Clip / mask if requested
+  if (!is.null(clip_region)) {
+    align_crs <- sf::st_crs(output)
+    if (!is.null(align_to)) {
+      align_crs <- sf::st_crs(align_to)
+    }
+    cr <- process_input(
+      input = clip_region,
+      align_to = terra::vect(sf::st_as_sfc(
+        "POLYGON ((0 -5, 10 0, 10 -10, 0 -5))",
+        crs = align_crs
+      )),
+      working_dir = working_root
+    )
+    if (inherits(output, "SpatVector")) {
+      output <- terra::crop(output, cr)
+    } else if (inherits(output, "SpatRaster")) {
+      output <- terra::crop(
+        x = output,
+        y = cr,
+        snap = snap,
+        mask = TRUE,
+        overwrite = TRUE
+      )
+      output <- terra::mask(output, cr, overwrite = TRUE)
+    }
+  }
   # Split categorical rasters for resample_type = "near"
   if (
     inherits(output, "SpatRaster") &&
@@ -233,6 +233,7 @@ process_input <- function(
   ) {
     if (terra::nlyr(output) > 1) {
       brick_list <- terra::split(output, names(output))
+      names(brick_list) <- names(output)
     } else {
       brick_list <- list(output)
       names(brick_list) <- names(output)
