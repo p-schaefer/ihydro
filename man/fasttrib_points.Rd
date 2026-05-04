@@ -195,5 +195,4 @@ ihydro::fasttrib_points(
 }
 \seealso{
 \code{\link[=process_hydrology]{process_hydrology()}}, \code{\link[=process_loi]{process_loi()}}, \code{\link[=prep_weights]{prep_weights()}},
-\code{\link[=attrib_points]{attrib_points()}}
 }

@@ -38,7 +38,6 @@
 #' @export
 #'
 #' @seealso [process_hydrology()], [process_loi()], [prep_weights()],
-#'   [attrib_points()]
 #'
 #' @rdname fasttrib_points
 #'
