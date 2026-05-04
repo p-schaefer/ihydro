@@ -226,10 +226,11 @@ compute_single_catchment <- carrier::crate(
 
     out_geom <- s1 %>%
       dplyr::select(-link_id, link_id = pour_point_id) %>%
-      #sf::st_buffer(units::as_units(0.0001, sf::st_crs(s1)$units)) %>%
-      sf::st_union()# %>%
-      #sfheaders::sf_remove_holes() #%>%
-      #sf::st_cast("POLYGON")
+      sf::st_buffer(units::as_units(0.1, "m")) %>%
+      sf::st_union() %>%
+      sfheaders::sf_remove_holes() %>%
+      sf::st_cast("POLYGON") %>%
+      sf::st_buffer(-units::as_units(0.1, "m"))
 
     out_sf <- sf::st_sf(
       link_id = link_id,
@@ -239,6 +240,6 @@ compute_single_catchment <- carrier::crate(
 
     p()
 
-    return(out_sf[1, , drop = FALSE])
+    return(out_sf)
   }
 )
