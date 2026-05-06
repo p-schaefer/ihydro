@@ -215,13 +215,25 @@ read_ihydro <- function(ihydro, layer, collect = TRUE) {
 
   layer_sel <- dplyr::filter(layer_list, layer_name == layer)
 
-  switch(
+  out <- switch(
     layer_sel$data_type,
     "Raster" = terra::rast(ihydro$outfile, lyrs = layer),
     "Vector" = sf::read_sf(ihydro$outfile, layer = layer),
     "Table" = ihydro_extract_tbl(ihydro, layer, collect),
     cli::cli_abort("Unknown data type for layer {.val {layer}}")
   )
+
+  if (inherits(out,c("data.table","sf"))){
+    out <- dplyr::mutate(
+      out,
+      dplyr::across(
+        tidyselect::any_of("link_id"),
+        ~as.character(.x)
+      )
+    )
+  }
+
+  return(out)
 }
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
