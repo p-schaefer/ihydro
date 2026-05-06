@@ -8,39 +8,17 @@
 #' It uses parallel processing to speed up the computation of point-targeted weights, which can be time-consuming.
 #'
 #' @details
-#' The `target_o_type` argument controls the geometry type of the point-targeted weights, which can be
-#' "point" (pour points), "segment_whole" (whole
-#' stream reaches [ignoring artificial reach beaks introduced with the `points` argument in [generate_vectors()]]),
-#' or "segment_point" (segments calculated separately for artificial reach beaks introduced
-#' with the `points` argument in [generate_vectors()]).
-#'
 #' Point-targeted (iFLO, HAiFLO) inverse distance weights are calculated and stored in unnested format,
 #' meaning that weights for different target points may be stored in the same raster layer, if they do
 #' not overlap. This allows for more efficient storage and retrieval of weights for specific target points
 #' without having to load many layers.
 #'
-#' When run in parallel, the function processes each LOI independently across multiple cores.
-#' The `write_strategy` argument controls how processed rasters are persisted to the GeoPackage:
-#' * `"sequential"` (default): all layers are processed in parallel first, then written to the
-#'   GeoPackage in a single sequential pass. This approach is faster but uses more disk space temporarily.
-#'   (note: this may trigger nested-future connection warnings in some environments, but these can be safely ignored).
-#' * `"batched"`: layers are processed in chunks (one chunk per batch of `n_cores` layers).
-#'   After each chunk finishes, its rasters are written to the GeoPackage before the next
-#'   chunk begins. This reduces peak temporary disk usage at the cost of slightly more
-#'   scheduling overhead.
-#'
 #' @param input An `ihydro` object.
 #' @param output_filename Optional path for weight GeoPackage.
 #' @param sample_points Character vector of site IDs (must exist in the `site_id_col` column provided in [generate_vectors()]), or `NULL`.
 #' @param link_id Character vector of link IDs, or `NULL`.
-#' @param target_o_type Character. Geometry type for point-targeted weights (see details).
 #' @param weighting_scheme Character vector of weighting schemes.
 #' @param inv_function Inverse distance function.
-#' @param write_strategy Character. How processed weight rasters are written to the
-#'   GeoPackage. `"sequential"` (default) waits for all parallel workers to
-#'   finish, then writes every raster in one pass. `"batched"` processes unnest
-#'   groups in chunks, writing to the GeoPackage between chunks to reduce peak
-#'   temporary disk usage.
 #' @param temp_dir Temporary file directory.
 #' @param verbose Logical.
 #'
@@ -105,14 +83,14 @@
 #'
 
 prep_weights <- function(
-    input,
-    output_filename,
-    weighting_scheme = c("iFLS","HAiFLS","iFLO","HAiFLO"),
-    inv_function = function(x) (x * 0.001 + 1)^-1,
-    return_products = FALSE,
-    mem_fraction = 0.5,
-    temp_dir = NULL,
-    verbose = FALSE
+  input,
+  output_filename,
+  weighting_scheme = c("iFLS", "HAiFLS", "iFLO", "HAiFLO"),
+  inv_function = function(x) (x * 0.001 + 1)^-1,
+  return_products = FALSE,
+  mem_fraction = 0.5,
+  temp_dir = NULL,
+  verbose = FALSE
 ) {
   check_ihydro(input)
 
@@ -156,10 +134,13 @@ prep_weights <- function(
           is.na(dstrib_id1)
         )
 
-        dem_outline <- terra::clamp(targ_rast,1,1)
+        dem_outline <- terra::clamp(targ_rast, 1, 1)
         dem_outline <- terra::as.polygons(dem_outline)
         dem_outline <- terra::as.lines(dem_outline)
-        dem_outline <- terra::buffer(dem_outline,width = terra::res(targ_rast)[[1]] * 2)
+        dem_outline <- terra::buffer(
+          dem_outline,
+          width = terra::res(targ_rast)[[1]] * 2
+        )
         dem_outline <- sf::st_as_sf(dem_outline)
 
         target_O <- sf::st_filter(
@@ -263,7 +244,7 @@ prep_weights <- function(
       verbose_mode = FALSE
     )
 
-    unnest_catchment <- read_ihydro(input,"unnest_catchment")
+    unnest_catchment <- read_ihydro(input, "unnest_catchment")
 
     ungp <- unique(unnest_catchment$unn_group)
 
@@ -281,14 +262,14 @@ prep_weights <- function(
       unn_group = ungp,
       temp_dir = temp_dir,
       dist_to_outlet_path = dist_to_outlet_path,
-      inv_function = rep(list(inv_function),length(ungp)),
-      weighting_scheme = rep(list(weighting_scheme),length(ungp)),
+      inv_function = rep(list(inv_function), length(ungp)),
+      weighting_scheme = rep(list(weighting_scheme), length(ungp)),
       mem_fraction = mem_fraction,
       n_cores = n_cores
     )
 
-    arg_list <- split(arg_list,1:nrow(arg_list))
-    arg_list <- lapply(arg_list,as.list)
+    arg_list <- split(arg_list, 1:nrow(arg_list))
+    arg_list <- lapply(arg_list, as.list)
 
     progressr::with_progress(enable = verbose, {
       total_tasks <- length(arg_list)
@@ -305,7 +286,7 @@ prep_weights <- function(
           args = args,
           seed = NULL,
           globals = c("args"),
-          packages = c("sf", "terra", "exactextractr", "dplyr","ihydro")
+          packages = c("sf", "terra", "exactextractr", "dplyr", "ihydro")
         )
       })
       extract_value <- lapply(extract_execute, future::value)
@@ -320,7 +301,6 @@ prep_weights <- function(
       rm(rast_in)
       file.remove(i)
     }
-
   }
 
   sf::write_sf(
@@ -339,8 +319,8 @@ prep_weights <- function(
 
   if (return_products) {
     rast_list <- lapply(
-      setNames(weighting_scheme,weighting_scheme),
-      function(x) read_ihydro(as_ihydro(output_filename),x)
+      setNames(weighting_scheme, weighting_scheme),
+      function(x) read_ihydro(as_ihydro(output_filename), x)
     )
     output <- c(output, rast_list)
   }
@@ -361,13 +341,13 @@ prep_weights <- function(
     mem_fraction = 0.5,
     n_cores = 1L,
     progressor = NULL
-  ){
+  ) {
     inv_function <- inv_function[[1]]
     weighting_scheme <- weighting_scheme[[1]]
     # Setup -------------------------------------------------------------------
 
     input <- ihydro::as_ihydro(input_file)
-    temp_dir_sub <- file.path(temp_dir,basename(tempfile()))
+    temp_dir_sub <- file.path(temp_dir, basename(tempfile()))
     dir.create(temp_dir_sub)
 
     old_terra_opts <- ihydro:::set_terra_options(
@@ -375,18 +355,20 @@ prep_weights <- function(
       temp_dir = temp_dir_sub,
       verbose = FALSE
     )
-    on.exit(ihydro:::restore_terra_options(old_terra_opts), add = TRUE)
+    # NOTE: on.exit runs FIFO, so tmpFiles must be registered BEFORE
+    # restore_terra_options to ensure it cleans temp_dir_sub (not the global dir).
     on.exit(
       suppressWarnings(
         terra::tmpFiles(
-          current=TRUE,
-          orphan=FALSE,
-          old=FALSE,
-          remove=TRUE
+          current = TRUE,
+          orphan = FALSE,
+          old = FALSE,
+          remove = TRUE
         )
       ),
-      add=T
+      add = TRUE
     )
+    on.exit(ihydro:::restore_terra_options(old_terra_opts), add = TRUE)
     on.exit(
       suppressWarnings(
         unlink(
@@ -395,7 +377,7 @@ prep_weights <- function(
           force = TRUE
         )
       ),
-      add=T
+      add = T
     )
 
     on.exit(gc(verbose = FALSE), add = TRUE)
@@ -406,12 +388,18 @@ prep_weights <- function(
     )
 
     # Get subbasins -----------------------------------------------------------
-    unnest_catchment <- ihydro::read_ihydro(input,"unnest_catchment")
-    unnest_catchment <- unnest_catchment[unnest_catchment$unn_group == unn_group,]
+    unnest_catchment <- ihydro::read_ihydro(input, "unnest_catchment")
+    unnest_catchment <- unnest_catchment[
+      unnest_catchment$unn_group == unn_group,
+    ]
 
     subbasins <- sf::read_sf(
       input,
-      query = ihydro:::build_sql_in("Subbasins_poly", "link_id", unique(unnest_catchment$link_id))
+      query = ihydro:::build_sql_in(
+        "Subbasins_poly",
+        "link_id",
+        unique(unnest_catchment$link_id)
+      )
     )
 
     catchments <- ihydro::get_catchment(
@@ -444,7 +432,7 @@ prep_weights <- function(
       min_vals = as.numeric(min_vals[[1]])
     )
 
-    catchments_rast <- terra::classify(catchments_rast,as.matrix(min_vals))
+    catchments_rast <- terra::classify(catchments_rast, as.matrix(min_vals))
     iDW_rasts <- dist_to_outlet - catchments_rast
 
     out_rasts <- list()
@@ -452,7 +440,7 @@ prep_weights <- function(
 
     iFLO_inv <- terra::app(iDW_rasts, fun = inv_function)
     if ("iFLO" %in% weighting_scheme) {
-      names(iFLO_inv) <- paste0("iFLO_unn_group",unn_group)
+      names(iFLO_inv) <- paste0("iFLO_unn_group", unn_group)
       out_rasts[[names(iFLO_inv)]] <- iFLO_inv
     }
 
@@ -462,12 +450,12 @@ prep_weights <- function(
       flow_accum <- terra::rast(input_file, "dem_accum_d8")
 
       HAiFLO_inv <- iFLO_inv * flow_accum
-      names(HAiFLO_inv) <-paste0("HAiFLO_unn_group",unn_group)
+      names(HAiFLO_inv) <- paste0("HAiFLO_unn_group", unn_group)
       out_rasts[[names(HAiFLO_inv)]] <- HAiFLO_inv
     }
 
     out_rasts <- terra::rast(out_rasts)
-    outfile <- file.path(temp_dir,paste0("OT_",unn_group,".tif"))
+    outfile <- file.path(temp_dir, paste0("OT_", unn_group, ".tif"))
     terra::writeRaster(
       out_rasts,
       filename = outfile,
@@ -480,7 +468,15 @@ prep_weights <- function(
       progressor()
     }
 
-    rm(dist_to_outlet,catchments_rast,iFLO_inv,flow_accum,HAiFLO_inv,iDW_rasts,out_rasts)
+    rm(
+      dist_to_outlet,
+      catchments_rast,
+      iFLO_inv,
+      flow_accum,
+      HAiFLO_inv,
+      iDW_rasts,
+      out_rasts
+    )
 
     return(outfile)
   }

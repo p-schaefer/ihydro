@@ -30,9 +30,7 @@ process_input <- function(
     verbose = FALSE
   )
   on.exit(
-    {
-      tryCatch(restore_terra_options(old_terra_opts), error = function(e) NULL)
-    },
+    restore_terra_options(old_terra_opts),
     add = TRUE
   )
 
