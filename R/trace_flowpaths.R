@@ -227,10 +227,9 @@ trace_flowpath_fn <- function(
           .options = furrr::furrr_options(
             globals = FALSE,
             seed = NULL,
-            scheduling = 4L
+            scheduling = 1L
           ),
           carrier::crate(function(x) {
-            options(scipen = 999)
             `%>%` <- magrittr::`%>%`
             dplyr::arrange(x, USChnLn_Fr) %>%
               utils::tail(1) %>%
@@ -259,10 +258,9 @@ trace_flowpath_fn <- function(
           .options = furrr::furrr_options(
             globals = FALSE,
             seed = NULL,
-            scheduling = 4L
+            scheduling = 1L
           ),
           carrier::crate(function(x, p) {
-            options(scipen = 999)
             `%>%` <- magrittr::`%>%`
             x <- x %>%
               dplyr::select(
@@ -339,10 +337,9 @@ trace_flowpath_fn <- function(
             .options = furrr::furrr_options(
               globals = FALSE,
               seed = NULL,
-              scheduling = 4L
+              scheduling = 1L
             ),
             carrier::crate(function(data, ds_path, p) {
-              options(scipen = 999)
               `%>%` <- magrittr::`%>%`
               out <- dplyr::bind_rows(
                 data %>%

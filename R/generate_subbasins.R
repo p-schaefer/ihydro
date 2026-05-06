@@ -134,7 +134,7 @@ generate_subbasins <- function(
         .options = furrr::furrr_options(
           globals = FALSE,
           seed = NULL,
-          scheduling = 4L
+          scheduling = 1L
         ),
         split_subbasin_worker
       )
@@ -226,8 +226,6 @@ generate_subbasins <- function(
 #' @noRd
 split_subbasin_worker <- carrier::crate(
   function(data, link_id, subb_poly, temp_dir, p) {
-    #suppressPackageStartupMessages(library(sf)) # Not sure why, but this is necessary
-    # options(scipen = 999)
     `%>%` <- magrittr::`%>%`
 
     # Single-point case: no splitting needed

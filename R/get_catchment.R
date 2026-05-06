@@ -137,7 +137,7 @@ get_catchment <- function(
           .options = furrr::furrr_options(
             globals = FALSE,
             seed = NULL,
-            scheduling = 4L
+            scheduling = 1L
           ),
           compute_single_catchment
         )

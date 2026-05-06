@@ -330,7 +330,7 @@ process_loi <- function(
           .options = furrr::furrr_options(
             globals = FALSE,
             seed = NULL,
-            scheduling = 4L
+            scheduling = 1L
           ),
           process_single_loi_worker
         )
@@ -363,7 +363,7 @@ process_loi <- function(
         .options = furrr::furrr_options(
           globals = FALSE,
           seed = NULL,
-          scheduling = 4L
+          scheduling = 1L
         ),
         process_single_loi_worker
       )
