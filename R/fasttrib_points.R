@@ -180,11 +180,6 @@ fasttrib_points <- function(
   check_ihydro(input)
 
   stopifnot(mem_fraction < 0.9 | mem_fraction > 0.1)
-  if (is.null(n_batches)) {
-    n_batches <- 1L
-  } else {
-    stopifnot(is.numeric(n_batches))
-  }
 
   loi_numeric_stats <- match.arg(
     loi_numeric_stats,
@@ -333,6 +328,13 @@ fasttrib_points <- function(
   # Setup and execute parallel extraction of attributes for each subbasin
   fun_sel <- unique(c("sum", loi_numeric_stats))
 
+  if (is.null(n_batches)) {
+    n_batches <- length(unique(subb_lookup$link_id))
+  } else {
+    stopifnot(is.numeric(n_batches))
+    n_batches <- round(n_batches)
+  }
+
   sub_summ <- .extract_planner(
     input = input,
     subb_ids = subb_ids,
@@ -357,6 +359,7 @@ fasttrib_points <- function(
 
   gc(verbose = FALSE)
 
+  progressr::handlers(progressr::handler_cli(format = "{cli::pb_bar} {cli::pb_percent} | {cli::pb_eta_str}"))
   progressr::with_progress(enable = verbose, {
     total_tasks <- length(sub_summ)
     p <- progressr::progressor(steps = total_tasks)
@@ -794,29 +797,18 @@ fasttrib_points <- function(
     extra_out <- NULL
 
     loi_rasts <- terra::rast(loi_rast_input, c(numb_rast, cat_rast))
-    # Project subbasins to match raster CRS before cropping to avoid a huge
-    # crop extent from a CRS mismatch (which can produce 100s of GB temp files).
-    # subbasins_loi_crs <- sf::st_transform(
-    #   subbasins,
-    #   sf::st_crs(terra::crs(loi_rasts))
-    # )
-    # loi_rasts <- terra::crop(
-    #   loi_rasts,
-    #   terra::vect(subbasins_loi_crs)
-    # )
+    loi_rasts <- terra::crop(
+      loi_rasts,
+      terra::vect(subbasins)
+    )
 
     if (!is.null(iDW_rast_input)) {
       iDW_rasts <- lapply(iDW_cols, function(x) terra::rast(iDW_rast_input, x))
       iDW_rasts <- terra::rast(iDW_rasts)
-
-      # subbasins_idw_crs <- sf::st_transform(
-      #   subbasins,
-      #   sf::st_crs(terra::crs(iDW_rasts))
-      # )
-      # iDW_rasts <- terra::crop(
-      #   iDW_rasts,
-      #   terra::vect(subbasins_idw_crs)
-      # )
+      iDW_rasts <- terra::crop(
+        iDW_rasts,
+        terra::vect(subbasins)
+      )
     }
     #if (!is.null(iDWSQ_rast_input)) {
     #  iDWSQ_rasts <- terra::rast(iDWSQ_rast_input, iDWSQ_cols)
@@ -1025,9 +1017,6 @@ fasttrib_points <- function(
     )
   }
 
-  n_jobs <- n_cores * chunks_per_worker
-  n_jobs <- min(n_jobs, length(unique(subb_ids$link_id)))
-
   ws_lumped <- "lumped" %in% iDW_cols
   ws_s <- iDW_cols[iDW_cols %in% c("iFLS", "HAiFLS")]
   ws_o <- iDW_cols[iDW_cols %in% c("iFLO", "HAiFLO")]
@@ -1052,6 +1041,10 @@ fasttrib_points <- function(
       as.numeric(unique(subb_lookup$link_id))
     )
   )
+
+  n_jobs <- n_cores * chunks_per_worker
+  n_jobs <- min(n_jobs, nrow(subbasins))
+
 
   subbasins$cent <- sf::st_centroid(subbasins$geom)
   subbasins$cent_x <- sf::st_coordinates(subbasins$cent)[, 1]
