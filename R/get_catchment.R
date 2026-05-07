@@ -63,12 +63,6 @@ get_catchment <- function(
   return = TRUE
 ) {
   check_ihydro(input)
-  whitebox::wbt_options(exe_path = whitebox::wbt_exe_path(), verbose = FALSE)
-
-  n_cores <- n_workers()
-  max_cores_opt <- getOption("parallelly.maxWorkers.localhost")
-  on.exit(options(parallelly.maxWorkers.localhost = max_cores_opt), add = TRUE)
-  options(parallelly.maxWorkers.localhost = n_cores)
 
   db_fp <- input$outfile
   temp_dir <- ensure_temp_dir(temp_dir)

@@ -359,6 +359,80 @@ fasttrib_points <- function(
 
   gc(verbose = FALSE)
 
+  # sub_summ <- lapply(sub_summ,function(x){
+  #   out <- split(x$iDW_cols,seq_along(x$iDW_cols))
+  #   out <- lapply(out,function(y) {
+  #     x$iDW_cols <- y
+  #     x$include_count <- FALSE
+  #     x$loi_summary <- FALSE
+  #     x
+  #   })
+  #
+  #   out[[1]]$include_count <- TRUE
+  #   out[[1]]$loi_summary <- TRUE
+  #
+  #   return(out)
+  # })
+  # sub_summ <- unlist(sub_summ, recursive = FALSE)
+
+  # r_all <- terra::rast(
+  #   list(
+  #     terra::rast(iDW_file$outfile,unique(unlist(sapply(sub_summ,function(x) x$iDW_cols)))),
+  #     terra::rast(loi_file$outfile,c(numb_rast,cat_rast))
+  #   )
+  # )
+  # terra::NAflag(r_all) <- NA_real_
+  #
+  # terra::writeRaster(
+  #   r_all,
+  #   file.path(temp_dir,"r_all.tif")
+  # )
+
+  # Attempt 1
+  # whitebox::wbt_raster_to_vector_points(
+  #   file.path(temp_dir,"r_all.tif"),
+  #   file.path(temp_dir,"r_all.shp"),
+  # )
+
+  # Attempt 2
+
+  # temp_fun <- function(input, link_id_in, temp_dir = NULL){
+  #
+  #   dem <- terra::rast(input$outfile,"dem_final")
+  #
+  #   subbsn <-  ihydro::read_ihydro(input,"Subbasins_poly")
+  #   subbsn <- subbsn[subbsn$link_id == link_id_in,]
+  #
+  #   dem <- terra::crop(
+  #     dem,
+  #     subbsn
+  #   )
+  #   terra::NAflag(dem) <- NA_real_
+  #
+  #   subbsn <- terra::rasterize(
+  #     terra::vect(subbsn),
+  #     dem,
+  #     field = "",
+  #     filename = file.path(temp_dir, paste0("link_id_",link_id_in,".tif")),
+  #     overwrite = TRUE
+  #   )
+  #
+  #   whitebox::wbt_raster_to_vector_points(
+  #     input = file.path(temp_dir, paste0("link_id_",link_id_in,".tif")),
+  #     output = file.path(temp_dir, paste0("link_id_",link_id_in,".shp")),
+  #   )
+  #
+  #   # Extract using gdallocationinfo
+  #   out_text <- whitebox::wbt_extract_raster_values_at_points(
+  #     input = file.path(temp_dir,"r_all.tif"),
+  #     points = file.path(temp_dir, paste0("link_id_",link_id_in,".shp")),
+  #     out_text = TRUE
+  #   )
+  #
+  #   system(paste0('ogr2ogr -f CSV ',paste0("link_id_",link_id_in,".csv"),' ',paste0("link_id_",link_id_in,".shp")))
+  #
+  # }
+
   progressr::handlers(progressr::handler_cli(format = "{cli::pb_bar} {cli::pb_percent} | {cli::pb_eta_str}"))
   progressr::with_progress(enable = verbose, {
     total_tasks <- length(sub_summ)
