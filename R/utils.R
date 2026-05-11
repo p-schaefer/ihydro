@@ -831,7 +831,7 @@ combine_weighted_var <- function(sub_mean, sub_var, sub_wt, cnt) {
   mu_pooled <- sum(sub_mean * sub_wt) / sum(sub_wt)
   out <- sum(sub_wt * (sub_var + (sub_mean - mu_pooled)^2)) / sum(sub_wt)
 
-  if (out == 0) {
+  if (is.na(out) || all(out == 0)) {
     out <- NA_real_
   }
   return(out)
@@ -859,7 +859,7 @@ combine_weighted_sample_var <- function(sub_mean, sub_var, sub_wt, cnt) {
     sum(sub_wt * (sub_mean - mu_pooled)^2)
   denominator <- W - 1
   out <- numerator / denominator
-  if (out == 0) {
+  if (is.na(out) || all(out == 0)) {
     out <- NA_real_
   }
   return(out)
