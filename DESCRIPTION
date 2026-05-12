@@ -48,7 +48,8 @@ Imports:
     mirai,
     SSNbler,
     igraph,
-    Matrix
+    Matrix,
+    Hmisc
 Depends:
     R (>= 4.2.0)
 Suggests:
