@@ -9,11 +9,11 @@ test_that("ex_data returns example files and process_input handles inputs", {
   expect_true(!is.null(shp))
 
   # process_input should accept a path, an sf object, and return an sf when appropriate
-  sf_in <- ihydro::process_input(shp)
-  expect_s3_class(sf_in, "sf")
+  sf_in <- ihydro:::process_input(shp)
+  expect_true(inherits(sf_in, "SpatVector"))
 
   # process_input on dem returns a terra SpatRaster / RasterLayer or path
-  dem_in <- ihydro::process_input(dem)
+  dem_in <- ihydro:::process_input(dem)
   expect_true(inherits(dem_in, "SpatRaster") || inherits(dem_in, "RasterLayer") || is.character(dem_in))
 })
 

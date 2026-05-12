@@ -119,7 +119,7 @@ generate_vectors <- function(
   compress = FALSE,
   verbose = FALSE
 ) {
-  check_ihydro(input)
+  .check_ihydro(input)
   stopifnot(
     is.logical(return_products),
     is.logical(verbose),
@@ -130,7 +130,7 @@ generate_vectors <- function(
     validate_site_id_col(site_id_col)
   }
 
-  temp_dir <- ensure_temp_dir(temp_dir)
+  temp_dir <- .ensure_temp_dir(temp_dir)
   extra_attr <- match.arg(extra_attr, several.ok = TRUE)
 
   if (verbose) {

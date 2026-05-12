@@ -15,7 +15,7 @@
 #'
 #' @param input An `ihydro` object.
 #' @param output_filename Optional path for weight GeoPackage.
-#' @param sample_points Character vector of site IDs (must exist in the `site_id_col` column provided in [generate_vectors()]), or `NULL`.
+#' @param sample_points Character vector of site IDs, or `NULL` for all.
 #' @param link_id Character vector of link IDs, or `NULL`.
 #' @param weighting_scheme Character vector of weighting schemes.
 #' @param inv_function Inverse distance function.
@@ -85,6 +85,8 @@
 prep_weights <- function(
   input,
   output_filename,
+  sample_points = NULL,
+  link_id = NULL,
   weighting_scheme = c("iFLS", "HAiFLS", "iFLO", "HAiFLO"),
   inv_function = function(x) (x * 0.001 + 1)^-1,
   return_products = FALSE,
@@ -92,7 +94,7 @@ prep_weights <- function(
   temp_dir = NULL,
   verbose = FALSE
 ) {
-  check_ihydro(input)
+  .check_ihydro(input)
 
   if (!grepl("\\.gpkg$", output_filename)) {
     cli::cli_abort("{.arg output_filename} must end in {.val .gpkg}.")
@@ -103,8 +105,14 @@ prep_weights <- function(
 
   weighting_scheme <- match.arg(weighting_scheme, several.ok = TRUE)
 
-  temp_dir <- ensure_temp_dir(temp_dir)
+  temp_dir <- .ensure_temp_dir(temp_dir)
   on.exit(unlink(temp_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  target_ids <- .target_id_fun(
+    db_fp = input$outfile,
+    sample_points = sample_points,
+    link_id = link_id
+  )
 
   # ── Write rasters to temp ───────────────────────────────────────────────
   if (verbose) {
@@ -115,7 +123,7 @@ prep_weights <- function(
   target_S <- NULL
   target_O <- NULL
 
-  n_cores <- n_workers()
+  n_cores <- .n_workers()
 
   for (lyr in lyr_sel) {
     targ_rast <- read_ihydro(input, lyr)
@@ -218,14 +226,14 @@ prep_weights <- function(
     names(iFLS_inv) <- "iFLS"
 
     if ("iFLS" %in% weighting_scheme) {
-      write_raster_gpkg(iFLS_inv, output_filename)
+      .write_raster_gpkg(iFLS_inv, output_filename)
     }
 
     if ("HAiFLS" %in% weighting_scheme) {
       HAiFLS_inv <- iFLS_inv * flow_accum
       HAiFLS_inv <- terra::mask(HAiFLS_inv, target_S, maskvalues = 1)
       names(HAiFLS_inv) <- "HAiFLS"
-      write_raster_gpkg(HAiFLS_inv, output_filename)
+      .write_raster_gpkg(HAiFLS_inv, output_filename)
     }
   }
 
@@ -244,14 +252,17 @@ prep_weights <- function(
       verbose_mode = FALSE
     )
 
-    unnest_catchment <- read_ihydro(input, "unnest_catchment")
+    unnest_catchment <- read_ihydro(input, "unnest_catchment") |>
+      dplyr::group_by(unn_group) |>
+      dplyr::filter(any(link_id %in% target_ids$link_id))|>
+      dplyr::ungroup()
 
     ungp <- unique(unnest_catchment$unn_group)
 
     # Ensure catchments exist
     catch <- get_catchment(
       input = input,
-      link_id = unnest_catchment$link_id,
+      link_id = target_ids$link_id,
       temp_dir = temp_dir,
       verbose = verbose,
       return = FALSE
@@ -271,6 +282,9 @@ prep_weights <- function(
     arg_list <- split(arg_list, 1:nrow(arg_list))
     arg_list <- lapply(arg_list, as.list)
 
+    progressr::handlers(progressr::handler_cli(
+      format = "{cli::pb_bar} {cli::pb_percent} | {cli::pb_eta_str}"
+    ))
     progressr::with_progress(enable = verbose, {
       total_tasks <- length(arg_list)
       p <- progressr::progressor(steps = total_tasks)
@@ -296,7 +310,7 @@ prep_weights <- function(
       rast_in <- terra::rast(i)
       terra::crs(rast_in) <- dem_crs
       for (ii in names(rast_in)) {
-        write_raster_gpkg(rast_in[[ii]], output_filename)
+        .write_raster_gpkg(rast_in[[ii]], output_filename)
       }
       rm(rast_in)
       file.remove(i)
@@ -350,13 +364,13 @@ prep_weights <- function(
     temp_dir_sub <- file.path(temp_dir, basename(tempfile()))
     dir.create(temp_dir_sub)
 
-    old_terra_opts <- ihydro:::set_terra_options(
+    old_terra_opts <- ihydro:::.set_terra_options(
       n_cores = n_cores,
       temp_dir = temp_dir_sub,
       verbose = FALSE
     )
     # NOTE: on.exit runs FIFO, so tmpFiles must be registered BEFORE
-    # restore_terra_options to ensure it cleans temp_dir_sub (not the global dir).
+    # .restore_terra_options to ensure it cleans temp_dir_sub (not the global dir).
     on.exit(
       suppressWarnings(
         terra::tmpFiles(
@@ -368,7 +382,7 @@ prep_weights <- function(
       ),
       add = TRUE
     )
-    on.exit(ihydro:::restore_terra_options(old_terra_opts), add = TRUE)
+    on.exit(ihydro:::.restore_terra_options(old_terra_opts), add = TRUE)
     on.exit(
       suppressWarnings(
         unlink(
@@ -395,7 +409,7 @@ prep_weights <- function(
 
     subbasins <- sf::read_sf(
       input,
-      query = ihydro:::build_sql_in(
+      query = ihydro:::.build_sql_in(
         "Subbasins_poly",
         "link_id",
         unique(unnest_catchment$link_id)

@@ -33,6 +33,10 @@ for (i in fl) {
     if (grepl("streams.shp$", i)) {
       v <- terra::svc(i)
       v <- v[2]
+    } else if (grepl("pointsources.shp$", i)) {
+      v <- terra::vect(i)
+      v <- terra::subset(v,"psource")
+      v[,1] <- 1
     } else {
       v <- terra::vect(i)
     }

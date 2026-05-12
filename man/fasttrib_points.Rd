@@ -13,7 +13,8 @@ fasttrib_points(
   sample_points = NULL,
   link_id = NULL,
   weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"),
-  loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
+  loi_numeric_stats = c("mean", "sd", "variance", "median", "min", "max", "sum"),
+  quantiles = NULL,
   mem_fraction = 0.5,
   n_batches = NULL,
   temp_dir = NULL,
@@ -41,7 +42,7 @@ inverse-distance weights. If \code{NULL}, weights are computed on the fly.}
 \item{weighting_scheme}{Character vector. Any of \code{"lumped"}, \code{"iFLS"},
 \code{"HAiFLS"}, \code{"iFLO"}, \code{"HAiFLO"}.}
 
-\item{loi_numeric_stats}{Character vector. Any of \code{"mean"}, \code{"sd"},
+\item{loi_numeric_stats}{Character vector. Any of \code{"mean"}, \code{"sd"}, \code{"variance"}
 \code{"median"}, \code{"min"}, \code{"max"}, \code{"sum"}.}
 
 \item{mem_fraction}{Numeric. Value between 0.1 and 0.9 (larger values give a warning).
@@ -53,6 +54,8 @@ The fraction of RAM that may be used by the program.}
 
 \item{store_iDW}{Logical. If \code{TRUE} and \code{iDW_file} is \code{NULL}, weights are
 written into the \code{input} GeoPackage.}
+
+\item{quantile}{quantiles to be computed (\code{NULL} to skip quantile calcularion)}
 }
 \value{
 A data.frame of weighted attributes, also written to \code{out_filename}.

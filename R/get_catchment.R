@@ -62,16 +62,16 @@ get_catchment <- function(
   verbose = FALSE,
   return = TRUE
 ) {
-  check_ihydro(input)
+  .check_ihydro(input)
 
   db_fp <- input$outfile
-  temp_dir <- ensure_temp_dir(temp_dir)
+  temp_dir <- .ensure_temp_dir(temp_dir)
 
   ihydro_tbl <- ihydro_layers(input)
 
   # Check for existing catchments
   existing_catch <- tibble::tibble(link_id = character(0))
-  site_id_col <- read_site_id_col(db_fp)
+  site_id_col <- .read_site_id_col(db_fp)
 
   if ("Catchment_poly" %in% ihydro_tbl$layer_name) {
     existing_catch <- read_ihydro(input, "Catchment_poly") |>
@@ -80,7 +80,7 @@ get_catchment <- function(
   }
 
   # Resolve targets
-  target_ids <- target_id_fun(
+  target_ids <- .target_id_fun(
     db_fp = db_fp,
     sample_points = sample_points,
     link_id = link_id
@@ -103,7 +103,7 @@ get_catchment <- function(
 
     return(sf::read_sf(
       db_fp,
-      query = build_sql_in("Catchment_poly", "link_id", already_done$link_id)
+      query = .build_sql_in("Catchment_poly", "link_id", already_done$link_id)
     ))
   }
 
@@ -175,7 +175,7 @@ get_catchment <- function(
       out,
       sf::read_sf(
         db_fp,
-        query = build_sql_in(
+        query = .build_sql_in(
           "Catchment_poly",
           "link_id",
           already_done$link_id
@@ -196,8 +196,6 @@ get_catchment <- function(
 #' @noRd
 compute_single_catchment <- carrier::crate(
   function(link_id, db_loc, p) {
-    #suppressPackageStartupMessages(library(sf))
-    #options(dplyr.summarise.inform = FALSE, scipen = 999)
     `%>%` <- magrittr::`%>%`
 
     con <- DBI::dbConnect(RSQLite::SQLite(), db_loc)

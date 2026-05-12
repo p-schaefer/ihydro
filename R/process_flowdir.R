@@ -160,7 +160,7 @@ process_flowdir <- function(
     cli::cli_abort("{.arg output_filename} already exists.")
   }
 
-  temp_dir <- ensure_temp_dir(temp_dir)
+  temp_dir <- .ensure_temp_dir(temp_dir)
   depression_corr <- match.arg(depression_corr)
 
   out_dir <- dirname(output_filename)
@@ -505,7 +505,7 @@ process_flowdir <- function(
   }
   for (f in raster_files) {
     r <- terra::rast(file.path(temp_dir, f))
-    write_raster_gpkg(r, output_filename)
+    .write_raster_gpkg(r, output_filename)
   }
 
   # ── Return ──────────────────────────────────────────────────────────────
@@ -540,8 +540,6 @@ burn_dem <- function(
   gdal_arg
 ) {
   bbox <- terra::as.polygons(terra::ext(dem), crs = target_crs)
-  # resol <- terra::cellSize(dem, unit = "m")
-  # resol <- unlist(terra::global(resol, "mean"), use.names = F)
   resol <- terra::res(dem)[[1]]
   resol <- sqrt(resol)
 
@@ -626,40 +624,28 @@ burn_dem <- function(
   if (burn_depth != 0) {
     sr1 <- terra::mask(
       dem_final,
-      burn_streams %>%
-        sf::st_as_sf() %>%
-        sf::st_buffer(resol * 3) %>%
+      burn_streams |>
+        sf::st_as_sf() |>
+        sf::st_buffer(resol * 3) |>
         terra::vect()
     )
     dem_final[!is.na(sr1)] <- sr1 - ceiling(burn_depth / 3)
     sr1 <- terra::mask(
       dem_final,
-      burn_streams %>%
-        sf::st_as_sf() %>%
-        sf::st_buffer(resol * 2) %>%
+      burn_streams |>
+        sf::st_as_sf() |>
+        sf::st_buffer(resol * 2) |>
         terra::vect()
     )
     dem_final[!is.na(sr1)] <- sr1 - ceiling(burn_depth / 3)
     sr1 <- terra::mask(
       dem_final,
-      burn_streams %>%
-        sf::st_as_sf() %>%
-        sf::st_buffer(resol * 1) %>%
+      burn_streams |>
+        sf::st_as_sf()|>
+        sf::st_buffer(resol * 1) |>
         terra::vect()
     )
     dem_final[!is.na(sr1)] <- sr1 - ceiling(burn_depth / 3)
-
-    # rast_streams[rast_streams != 1] <- NA
-    #
-    # rast_streams <- terra::buffer(
-    #   rast_streams,
-    #   width = terra::res(rast_streams)[[1]]
-    # )
-    # rast_streams <- as.numeric(rast_streams)
-    #
-    # rast_streams[rast_streams == 1] <- (-burn_depth)
-    #
-    # dem_final <- dem_final + rast_streams
   }
 
   terra::writeRaster(

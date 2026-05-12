@@ -1,6 +1,6 @@
 #' Process and align spatial inputs (refactored to use package helpers)
 #'
-#' This version reuses ensure_temp_dir, set_terra_options, and restore_terra_options.
+#' This version reuses .ensure_temp_dir, .set_terra_options, and .restore_terra_options.
 #' It adds write_for_whitebox to produce a single GeoTIFF path for downstream tools.
 #' @noRd
 process_input <- function(
@@ -21,16 +21,16 @@ process_input <- function(
   snap <- match.arg(snap, c("near", "in", "out"))
 
   # stable working dir for this call
-  working_root <- ensure_temp_dir(working_dir)
+  working_root <- .ensure_temp_dir(working_dir)
   # set terra options for this call and capture old options for restore
-  n_cores <- n_workers()
-  old_terra_opts <- set_terra_options(
+  n_cores <- .n_workers()
+  old_terra_opts <- .set_terra_options(
     n_cores = n_cores,
     temp_dir = working_root,
     verbose = FALSE
   )
   on.exit(
-    restore_terra_options(old_terra_opts),
+    .restore_terra_options(old_terra_opts),
     add = TRUE
   )
 

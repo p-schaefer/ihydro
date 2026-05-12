@@ -22,7 +22,7 @@ test_that("process_loi and fasttrib_points produce attributes for sample points"
   out_gpkg <- file.path(tempdir(), "test_loi_hydro.gpkg")
   if (file.exists(out_gpkg)) file.remove(out_gpkg)
 
-  hydro_out <- ihydro::process_flowdir(
+  hydro_out <- ihydro::process_hydrology(
     dem = dem,
     threshold = 200L,
     burn_streams = streams,
@@ -37,8 +37,10 @@ test_that("process_loi and fasttrib_points produce attributes for sample points"
   loi_combined <- ihydro::process_loi(
     dem = dem,
     num_inputs = list(slope = file.path(ex_loc, "LC.tif")),
-    cat_inputs = list(landcover = file.path(ex_loc, "LC.tif"), geology = file.path(ex_loc, "geology.shp"), pointsources = file.path(ex_loc, "pointsources.shp")),
-    variable_names = list(geology = "GEO_NAME", pointsources = "pontsrc"),
+    cat_inputs = list(landcover = file.path(ex_loc, "LC.tif"),
+                      geology = file.path(ex_loc, "geology.shp"),
+                      pointsources = file.path(ex_loc, "pointsources.shp")),
+    variable_names = list(geology = "GEO_NAME", pointsources = "psource"),
     output_filename = output_filename_loi,
     return_products = TRUE,
     verbose = FALSE
@@ -53,7 +55,7 @@ test_that("process_loi and fasttrib_points produce attributes for sample points"
     input = hydro_out,
     out_filename = file.path(tempdir(), "attr.csv"),
     loi_file = loi_combined,
-    sample_points = c("1", "25", "80"),
+    link_id = c("1", "25", "80"),
     weighting_scheme = c("lumped", "iFLS"),
     loi_numeric_stats = c("mean", "sd"),
     inv_function = function(x) (x * 0.001 + 1)^-1,
@@ -61,6 +63,6 @@ test_that("process_loi and fasttrib_points produce attributes for sample points"
   )
 
   expect_true(is.data.frame(fast_out))
-  expect_true(all(c("link_id") %in% colnames(fast_out) | all(c("pour_point_id") %in% colnames(fast_out))))
+  expect_true(all(c("link_id") %in% colnames(fast_out)))
 
 })

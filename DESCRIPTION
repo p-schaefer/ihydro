@@ -1,6 +1,6 @@
 Package: ihydro
 Title: Integrated hydrology tools for aquatic environmental science
-Version: 0.0.2
+Version: 0.0.3
 Authors@R: c(
     person(given = "Patrick",
            family = "Schaefer",
@@ -22,10 +22,7 @@ RoxygenNote: 7.3.3
 Imports:
     carrier,
     cli,
-    data.table,
     DBI,
-    dbplyr,
-    dtplyr,
     dplyr,
     furrr,
     future,

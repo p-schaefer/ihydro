@@ -4,7 +4,7 @@
 #' @param polys An sf or SpatVector polygon object.
 #' @param weights Optional weights for the extraction.
 #' @param fun Summary function(s) to use.
-#' @param n_workers Number of parallel workers.
+#' @param .n_workers Number of parallel workers.
 #' @param max_cells_in_memory Passed to exact_extract.
 #' @param n_reps Number of repetitions for timing.
 #' @return Data.frame with timing and memory results.
@@ -13,7 +13,7 @@ benchmark_exact_extract <- function(
   polys,
   weights = NULL,
   fun = "mean",
-  n_workers = 2,
+  .n_workers = 2,
   chunks_per_worker = 1L,
   max_cells_in_memory = 1e7,
   n_reps = 3
@@ -53,11 +53,11 @@ benchmark_exact_extract <- function(
   )
 
   # Parallel
-  future::plan(future::multisession, workers = n_workers)
+  future::plan(future::multisession, workers = .n_workers)
   n <- nrow(polys)
   idx <- split(
     seq_len(n),
-    cut(seq_len(n), n_workers, labels = FALSE)
+    cut(seq_len(n), .n_workers, labels = FALSE)
   )
 
   par_time <- microbenchmark::microbenchmark(
@@ -72,7 +72,7 @@ benchmark_exact_extract <- function(
             fun = fun,
             progress = FALSE,
             max_cells_in_memory = floor(
-              (max_cells_in_memory / n_workers) * 0.8
+              (max_cells_in_memory / .n_workers) * 0.8
             )
           )
         },
@@ -82,7 +82,7 @@ benchmark_exact_extract <- function(
           weights_file = weights_file,
           fun = fun,
           max_cells_in_memory = max_cells_in_memory,
-          n_workers = n_workers
+          .n_workers = .n_workers
         ),
         future.seed = NULL,
         future.packages = c("exactextractr", "terra", "sf")
@@ -95,7 +95,7 @@ benchmark_exact_extract <- function(
   if (chunks_per_worker > 1) {
     idx <- split(
       seq_len(n),
-      cut(seq_len(n), n_workers * chunks_per_worker, labels = FALSE)
+      cut(seq_len(n), .n_workers * chunks_per_worker, labels = FALSE)
     )
 
     chunk_par_time <- microbenchmark::microbenchmark(
@@ -110,7 +110,7 @@ benchmark_exact_extract <- function(
               fun = fun,
               progress = FALSE,
               max_cells_in_memory = floor(
-                (max_cells_in_memory / n_workers) * 0.8
+                (max_cells_in_memory / .n_workers) * 0.8
               )
             )
           },
@@ -120,7 +120,7 @@ benchmark_exact_extract <- function(
             weights_file = weights_file,
             fun = fun,
             max_cells_in_memory = max_cells_in_memory,
-            n_workers = n_workers
+            .n_workers = .n_workers
           ),
           future.seed = NULL,
           future.packages = c("exactextractr", "terra", "sf"),

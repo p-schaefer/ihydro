@@ -22,7 +22,7 @@ attrib_streamline <- function(
   compress = FALSE,
   verbose = FALSE
 ) {
-  check_ihydro(input)
+  .check_ihydro(input)
   extra_attr <- match.arg(extra_attr, several.ok = TRUE)
 
   # Validate point-related args
@@ -45,7 +45,7 @@ attrib_streamline <- function(
     is.logical(compress)
   )
 
-  temp_dir <- ensure_temp_dir(temp_dir)
+  temp_dir <- .ensure_temp_dir(temp_dir)
   db_fp <- input$outfile
 
   # Configure tools

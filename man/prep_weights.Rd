@@ -7,6 +7,8 @@
 prep_weights(
   input,
   output_filename,
+  sample_points = NULL,
+  link_id = NULL,
   weighting_scheme = c("iFLS", "HAiFLS", "iFLO", "HAiFLO"),
   inv_function = function(x) (x * 0.001 + 1)^-1,
   return_products = FALSE,
@@ -20,6 +22,10 @@ prep_weights(
 
 \item{output_filename}{Optional path for weight GeoPackage.}
 
+\item{sample_points}{Character vector of site IDs, or \code{NULL} for all.}
+
+\item{link_id}{Character vector of link IDs, or \code{NULL}.}
+
 \item{weighting_scheme}{Character vector of weighting schemes.}
 
 \item{inv_function}{Inverse distance function.}
@@ -27,18 +33,6 @@ prep_weights(
 \item{temp_dir}{Temporary file directory.}
 
 \item{verbose}{Logical.}
-
-\item{sample_points}{Character vector of site IDs (must exist in the \code{site_id_col} column provided in \code{\link[=generate_vectors]{generate_vectors()}}), or \code{NULL}.}
-
-\item{link_id}{Character vector of link IDs, or \code{NULL}.}
-
-\item{target_o_type}{Character. Geometry type for point-targeted weights (see details).}
-
-\item{write_strategy}{Character. How processed weight rasters are written to the
-GeoPackage. \code{"sequential"} (default) waits for all parallel workers to
-finish, then writes every raster in one pass. \code{"batched"} processes unnest
-groups in chunks, writing to the GeoPackage between chunks to reduce peak
-temporary disk usage.}
 }
 \value{
 An \code{ihydro} object pointing to the weight file.
@@ -52,28 +46,10 @@ The function checks for existing weights in the output GeoPackage and only calcu
 It uses parallel processing to speed up the computation of point-targeted weights, which can be time-consuming.
 }
 \details{
-The \code{target_o_type} argument controls the geometry type of the point-targeted weights, which can be
-"point" (pour points), "segment_whole" (whole
-stream reaches [ignoring artificial reach beaks introduced with the \code{points} argument in \code{\link[=generate_vectors]{generate_vectors()}}]),
-or "segment_point" (segments calculated separately for artificial reach beaks introduced
-with the \code{points} argument in \code{\link[=generate_vectors]{generate_vectors()}}).
-
 Point-targeted (iFLO, HAiFLO) inverse distance weights are calculated and stored in unnested format,
 meaning that weights for different target points may be stored in the same raster layer, if they do
 not overlap. This allows for more efficient storage and retrieval of weights for specific target points
 without having to load many layers.
-
-When run in parallel, the function processes each LOI independently across multiple cores.
-The \code{write_strategy} argument controls how processed rasters are persisted to the GeoPackage:
-\itemize{
-\item \code{"sequential"} (default): all layers are processed in parallel first, then written to the
-GeoPackage in a single sequential pass. This approach is faster but uses more disk space temporarily.
-(note: this may trigger nested-future connection warnings in some environments, but these can be safely ignored).
-\item \code{"batched"}: layers are processed in chunks (one chunk per batch of \code{n_cores} layers).
-After each chunk finishes, its rasters are written to the GeoPackage before the next
-chunk begins. This reduces peak temporary disk usage at the cost of slightly more
-scheduling overhead.
-}
 }
 \examples{
 \dontrun{

@@ -27,10 +27,11 @@
 #' @param link_id Character vector of link IDs, or `NULL`.
 #' @param weighting_scheme Character vector. Any of `"lumped"`, `"iFLS"`,
 #'   `"HAiFLS"`, `"iFLO"`, `"HAiFLO"`.
-#' @param loi_numeric_stats Character vector. Any of `"mean"`, `"sd"`,
+#' @param loi_numeric_stats Character vector. Any of `"mean"`, `"sd"`, `"variance"`
 #'   `"median"`, `"min"`, `"max"`, `"sum"`.
 #' @param mem_fraction Numeric. Value between 0.1 and 0.9 (larger values give a warning).
 #'   The fraction of RAM that may be used by the program.
+#' @param quantile quantiles to be computed (`NULL` to skip quantile calcularion)
 #' @param temp_dir Temporary directory for intermediate files.
 #' @param verbose Logical.
 #'
@@ -161,36 +162,46 @@
 #'
 
 fasttrib_points <- function(
-    input,
-    out_filename = NULL,
-    loi_file = NULL,
-    loi_cols = NULL,
-    iDW_file = NULL,
-    sample_points = NULL,
-    link_id = NULL,
-    weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"),
-    loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
-    mem_fraction = 0.5,
-    n_batches = NULL,
-    temp_dir = NULL,
-    verbose = FALSE,
-    ...
+  input,
+  out_filename = NULL,
+  loi_file = NULL,
+  loi_cols = NULL,
+  iDW_file = NULL,
+  sample_points = NULL,
+  link_id = NULL,
+  weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"),
+  loi_numeric_stats = c(
+    "mean",
+    "sd",
+    "variance",
+    "median",
+    "min",
+    "max",
+    "sum"
+  ),
+  quantiles = NULL,
+  mem_fraction = 0.5,
+  n_batches = NULL,
+  temp_dir = NULL,
+  verbose = FALSE,
+  ...
 ) {
   # ─ Validate inputs ───────────────────────────
-  check_ihydro(input)
+  .check_ihydro(input)
 
   stopifnot(mem_fraction < 0.9 | mem_fraction > 0.1)
+  stopifnot(all(quantiles <= 1) & all(quantiles >= 0))
 
   loi_numeric_stats <- match.arg(
     loi_numeric_stats,
     several.ok = TRUE,
-    choices = c("mean", "sd", "median", "min", "max", "sum")
+    choices = c("mean", "sd", "variance", "median", "min", "max", "sum")
   )
   loi_numeric_stats <- stats::setNames(loi_numeric_stats, loi_numeric_stats)
 
   input_path <- input$outfile
-  temp_dir <- ensure_temp_dir(temp_dir)
-  n_cores <- n_workers()
+  temp_dir <- .ensure_temp_dir(temp_dir)
+  n_cores <- .n_workers()
 
   # ─ Process iDW ───────────────────────
 
@@ -224,13 +235,15 @@ fasttrib_points <- function(
         input = input,
         output_filename = iDW_file,
         weighting_scheme = weighting_scheme[weighting_scheme != "lumped"],
+        sample_points = sample_points,
+        link_id = link_id,
         temp_dir = temp_dir_sub,
         verbose = verbose,
         inv_function = inv_function
       )
     }
 
-    check_ihydro(iDW_file)
+    .check_ihydro(iDW_file)
   }
 
   # ─ Configure external tools ───────────────────────
@@ -244,12 +257,12 @@ fasttrib_points <- function(
     wd = temp_dir
   )
 
-  old_terra_opts <- set_terra_options(
+  old_terra_opts <- .set_terra_options(
     n_cores = 1L,
     temp_dir = temp_dir,
     verbose = verbose > 3
   )
-  on.exit(restore_terra_options(old_terra_opts), add = TRUE)
+  on.exit(.restore_terra_options(old_terra_opts), add = TRUE)
 
   # ─ Resolve LOI file ──────────────────────────
   loi_file <- .resolve_loi(input, loi_file)
@@ -266,23 +279,11 @@ fasttrib_points <- function(
   loi_meta <- dplyr::filter(loi_meta, loi_var_nms %in% loi_cols)
 
   # ─ Resolve target IDs ─────────────────────────
-  target_ids <- target_id_fun(
+  target_ids <- .target_id_fun(
     db_fp = input_path,
     sample_points = sample_points,
     link_id = link_id
   )
-
-  # ─ Resolve iDW file and prepare weights ─────────────────
-  idw_layers <- ihydro_layers(iDW_file)$layer_name
-  missing_layers <- setdiff(weighting_scheme, idw_layers)
-  missing_layers <- missing_layers[missing_layers != "lumped"]
-  missing_layers <- missing_layers[!missing_layers %in% c("iFLO", "HAiFLO")]
-  if (length(missing_layers) > 0L) {
-    cli::cli_abort(c(
-      "The following weighting layers are missing from iDW_file: ",
-      "x" = "{.val {missing_layers}}"
-    ))
-  }
 
   # ─ Build subbasin lookup ────────────────────────
 
@@ -311,6 +312,29 @@ fasttrib_points <- function(
     dplyr::filter(
       final_link_id %in% subb_ids$link_id
     )
+
+  # ─ Resolve iDW file and prepare weights ─────────────────
+  idw_layers <- ihydro_layers(iDW_file)$layer_name
+  idw_layers <- idw_layers[!idw_layers %in% c("weight_meta", "DEM_Extent")]
+  missing_layers <- setdiff(weighting_scheme, idw_layers)
+  missing_layers <- missing_layers[missing_layers != "lumped"]
+  if (any(grepl("iFLO", weighting_scheme))) {
+    layers_needed <- lapply(
+      weighting_scheme[grepl("iFLO", weighting_scheme)],
+      function(x) paste0(x, "_unn_group", unique(subb_ids$unn_group))
+    )
+    layers_needed <- unlist(layers_needed)
+
+    missing_layers <- missing_layers[!missing_layers %in% c("iFLO", "HAiFLO")]
+    missing_layers <- c(missing_layers, setdiff(layers_needed, idw_layers))
+  }
+
+  if (length(missing_layers) > 0L) {
+    cli::cli_abort(c(
+      "The following weighting layers are missing from iDW_file: ",
+      "x" = "{.val {missing_layers}}"
+    ))
+  }
 
   # Ensure catchments exist
   catch <- get_catchment(
@@ -347,7 +371,7 @@ fasttrib_points <- function(
     n_cores = n_cores,
     chunks_per_worker = n_batches,
     fun = fun_sel,
-    quantiles = NULL,
+    quantiles = quantiles,
     temp_dir = temp_dir,
     verbose = verbose
   )
@@ -358,11 +382,11 @@ fasttrib_points <- function(
   }
   #browser()
 
-  subbs <- read_ihydro(input,"Subbasins_poly")
+  subbs <- read_ihydro(input, "Subbasins_poly")
   subbs$link_id <- as.numeric(subbs$link_id) * 1000
   subbs <- terra::rasterize(
     terra::vect(subbs),
-    read_ihydro(input,"dem_final"),
+    read_ihydro(input, "dem_final"),
     field = "link_id"
   )
   subbs <- terra::wrap(subbs)
@@ -370,7 +394,7 @@ fasttrib_points <- function(
   loi_rasts <- terra::rast(loi_file$outfile)
 
   iDW_rasts <- NULL
-  iDW_cols <- unique(unlist(lapply(sub_summ,function(x) x$iDW_cols)))
+  iDW_cols <- unique(unlist(lapply(sub_summ, function(x) x$iDW_cols)))
   if (!is.null(iDW_file) & length(iDW_cols) > 0) {
     iDW_rasts <- lapply(iDW_cols, function(x) terra::rast(iDW_file$outfile, x))
     iDW_rasts <- terra::rast(iDW_rasts)
@@ -381,7 +405,6 @@ fasttrib_points <- function(
   all_rasts <- terra::rast(all_rasts)
   all_rasts <- terra::wrap(all_rasts)
 
-  #browser()
   gg <- gc(verbose = FALSE)
 
   progressr::handlers(progressr::handler_cli(
@@ -398,15 +421,24 @@ fasttrib_points <- function(
       args
     })
 
-    #do.call(.extract_subbasins,sub_summ[[1]])
-
     extract_execute <- lapply(sub_summ, function(args) {
       future::futureCall(
         .extract_subbasins,
         args = args,
         seed = NULL,
         globals = c("args"),
-        packages = c("sf", "terra", "exactextractr", "dplyr", "data.table", "purrr", "Hmisc", "tibble")
+        packages = c(
+          "stats",
+          "sf",
+          "terra",
+          "exactextractr",
+          "dplyr",
+          "tidyr",
+          "purrr",
+          "Hmisc",
+          "tibble",
+          "ihydro"
+        )
       )
     })
     extract_value <- lapply(extract_execute, future::value)
@@ -420,13 +452,13 @@ fasttrib_points <- function(
   extract_value_comb <- list()
   extract_value_nms <- names(extract_value)
   ws_s_nms <- extract_value_nms[grepl("^ws_s\\.", extract_value_nms)]
-  #ws_o_nms <- extract_value_nms[grepl("^ws_o\\.", extract_value_nms)]
   ws_lump_nms <- extract_value_nms[grepl("^ws_lump\\.", extract_value_nms)]
 
   extract_value_comb$ws_s <- tibble::tibble()
   extract_value_comb$ws_o <- tibble::tibble()
   extract_value_comb$ws_lump <- dplyr::bind_rows(extract_value[ws_lump_nms])
 
+  browser()
   if (length(ws_s_nms) > 0) {
     temp_comb <- list()
     ws_comb <- dplyr::bind_rows(extract_value[ws_s_nms])
@@ -505,14 +537,6 @@ fasttrib_points <- function(
     )
   }
 
-  # if (length(ws_o_nms) > 0) {
-  #   extract_value_comb$ws_o <- extract_value_comb$ws_o |>
-  #     dplyr::left_join(
-  #       dplyr::select(subb_ids, link_id, unn_group),
-  #       by = c("link_id_otarget" = "link_id")
-  #     )
-  # }
-
   # Summarize catchment attributes and join with target IDs
   result <- .summarize_catchment(
     extract_value = extract_value_comb,
@@ -540,12 +564,6 @@ fasttrib_points <- function(
 }
 
 
-# ────────────────────────────────────────
-# Internal helpers ─ NOT exported
-# ────────────────────────────────────────
-
-# ─ Input validation & setup ─────────────────────────
-
 #' Resolve LOI file to an ihydro object
 #' @noRd
 .resolve_loi <- function(input, loi_file) {
@@ -562,203 +580,9 @@ fasttrib_points <- function(
   loi_file
 }
 
-#' Extract raster attributes
-#' @noRd
-.extract_fun <- function(
-    all_rasts,
-    subbasins,
-    x_cols = NULL,
-    weight_cols = NULL,
-    #sqweight_cols = NULL,
-    default_value = NA_real_,
-    default_weight = NA_real_,
-    fun,
-    quantiles = NULL,
-    mem_fraction = 0.5,
-    include_count = FALSE,
-    n_cores = 1L,
-    temp_dir_sub = NULL
-) {
-  if (is.null(x_cols) && is.null(weight_cols)) {
-    return(NULL)
-  }
-
-  # Per-worker terra memory management
-  if (is.null(temp_dir_sub)) {
-    temp_dir_sub <- tempfile()
-  }
-  if (!dir.exists(temp_dir_sub)) {
-    dir.create(temp_dir_sub)
-  }
-  old_terra_opts <- ihydro:::set_terra_options(
-    n_cores = n_cores,
-    temp_dir = temp_dir_sub,
-    verbose = FALSE
-  )
-  # NOTE: on.exit runs FIFO, so tmpFiles must be registered BEFORE
-  # restore_terra_options to ensure it cleans temp_dir_sub (not the global dir).
-  on.exit(
-    terra::tmpFiles(
-      current = TRUE,
-      orphan = FALSE,
-      old = FALSE,
-      remove = TRUE
-    ),
-    add = TRUE
-  )
-  on.exit(ihydro:::restore_terra_options(old_terra_opts), add = TRUE)
-  on.exit(
-    suppressWarnings(unlink(temp_dir_sub, recursive = TRUE, force = TRUE)),
-    add = TRUE
-  )
-  on.exit(gc(verbose = FALSE), add = TRUE)
-
-  max_cells_in_memory <- ihydro:::.max_cells_in_memory_helper(
-    mem_fraction = mem_fraction,
-    n_cores = n_cores
-  )
-
-  if (include_count) {
-    all_rasts[["count_internal"]] <- all_rasts[[1]]
-    all_rasts[["count_internal"]][] <- 1
-    x_cols <- c(x_cols, "count_internal")
-    fun <- unique(c(fun, "count"))
-  }
-
-  # Ensure x_cols and weight_cols exist in all_rasts
-  if (!is.null(x_cols)) {
-    missing_x <- setdiff(x_cols, names(all_rasts))
-    if (length(missing_x) > 0) {
-      stop(
-        "The following x_cols are not present in all_rasts: ",
-        paste(missing_x, collapse = ", ")
-      )
-    }
-  }
-  if (!is.null(weight_cols)) {
-    missing_w <- setdiff(weight_cols, names(all_rasts))
-    if (length(missing_w) > 0) {
-      stop(
-        "The following weight_cols are not present in all_rasts: ",
-        paste(missing_w, collapse = ", ")
-      )
-    }
-  }
-
-  out <- list()
-  if (is.null(weight_cols)) {
-    out[[1]] <- exactextractr::exact_extract(
-      x = all_rasts[[x_cols]],
-      y = subbasins,
-      fun = fun,
-      quantiles = quantiles,
-      default_value = default_value,
-      max_cells_in_memory = max_cells_in_memory,
-      progress = FALSE,
-      force_df = TRUE,
-      full_colnames = TRUE
-    )
-  } else {
-    # LOI layers duplicated: one copy per weight layer
-    loi_idx <- rep(x_cols, each = length(weight_cols))
-    loi_idxnm <- paste0(
-      loi_idx,
-      "_",
-      rep(weight_cols, length.out = length(loi_idx))
-    )
-
-    all_rast2_loi <- terra::subset(all_rasts, loi_idx)
-    names(all_rast2_loi) <- loi_idxnm
-
-    # iDW layers duplicated: one copy per LOI layer
-    iDW_idx <- rep(
-      weight_cols,
-      length.out = length(x_cols) * length(weight_cols)
-    )
-    iDW_idxnm <- paste0(iDW_idx, "_", rep(x_cols, each = length(weight_cols)))
-
-    all_rast2_idw <- terra::subset(all_rasts, iDW_idx)
-    names(all_rast2_idw) <- iDW_idxnm
-
-    all_rast2 <- c(all_rast2_loi, all_rast2_idw)
-
-    out[[1]] <- exactextractr::exact_extract(
-      x = all_rast2[[loi_idxnm]],
-      y = subbasins,
-      fun = fun,
-      quantiles = quantiles,
-      weights = all_rast2[[iDW_idxnm]],
-      default_value = default_value,
-      default_weight = default_weight,
-      max_cells_in_memory = max_cells_in_memory,
-      progress = FALSE,
-      force_df = TRUE,
-      full_colnames = TRUE
-    )
-
-    # rename columns back to canonical names
-    final_names <- colnames(out[[1]])
-    for (i in seq_along(loi_idxnm)) {
-      final_names <- gsub(loi_idxnm[[i]], loi_idx[[i]], final_names)
-    }
-    for (i in seq_along(iDW_idxnm)) {
-      final_names <- gsub(iDW_idxnm[[i]], iDW_idx[[i]], final_names)
-    }
-    colnames(out[[1]]) <- final_names
-
-    # Get sum of weights for each loi (to account for NAs)
-    # Clamp LOI to 1 so weighted_sum gives sum-of-weights (accounting for NAs)
-    all_rasts[[x_cols]] <- terra::clamp(all_rasts[[x_cols]], 1, 1)
-
-    idw_comb <- c(weight_cols)
-    iDW_idx2 <- rep(idw_comb, each = length(x_cols))
-    iDW_idxnm2 <- paste0(
-      iDW_idx2,
-      "_",
-      rep(x_cols, length.out = length(iDW_idx2))
-    )
-
-    loi_idx2 <- rep(x_cols, length.out = length(iDW_idx2))
-    loi_idxnm2 <- paste0(loi_idx2, "_", rep(idw_comb, each = length(x_cols)))
-
-    all_rast2b_idw <- terra::subset(all_rasts, iDW_idx2)
-    names(all_rast2b_idw) <- iDW_idxnm2
-
-    all_rast2b_loi <- terra::subset(all_rasts, loi_idx2)
-    names(all_rast2b_loi) <- loi_idxnm2
-
-    all_rast2b <- c(all_rast2b_idw, all_rast2b_loi)
-
-    out[[2]] <- exactextractr::exact_extract(
-      x = all_rast2b[[iDW_idxnm2]],
-      y = subbasins,
-      fun = "weighted_sum",
-      weights = all_rast2b[[loi_idxnm2]],
-      default_value = NA_real_,
-      default_weight = 0,
-      max_cells_in_memory = max_cells_in_memory,
-      progress = FALSE,
-      force_df = TRUE,
-      full_colnames = TRUE
-    )
-
-    final_names <- colnames(out[[2]])
-    for (i in seq_along(loi_idxnm2)) {
-      final_names <- gsub(loi_idxnm2[[i]], loi_idx2[[i]], final_names)
-    }
-    for (i in seq_along(iDW_idxnm2)) {
-      final_names <- gsub(iDW_idxnm2[[i]], iDW_idx2[[i]], final_names)
-    }
-    colnames(out[[2]]) <- final_names
-  }
-
-  dplyr::bind_cols(out)
-}
-
-
 #' Extract raster attributes for a set of subbassins (for parallel)
 #' @noRd
-.extract_subbasins <- #carrier::crate(
+.extract_subbasins <- carrier::crate(
   function(
     input_file,
     link_id,
@@ -767,7 +591,6 @@ fasttrib_points <- function(
     link_id_otarget = NA_character_,
     loi_rast_input,
     loi_summary = TRUE,
-    #loi_clamp_file = NULL,
     numb_rast = NULL,
     cat_rast = NULL,
     iDW_rast_input = NULL,
@@ -780,31 +603,12 @@ fasttrib_points <- function(
     include_count = FALSE,
     progressor = NULL
   ) {
-    #browser()
     catch_source <- match.arg(catch_source)
 
-    # iDW_rasts <- NULL
-    # #loi_clamp_rasts <- NULL
-    # loi_rasts <- NULL
-    # iDW_out <- NULL
-    # numb_out <- NULL
-    # cat_out <- NULL
-    # numb_out_iDW <- NULL
-    # cat_out_iDW <- NULL
     extra_out <- NULL
 
-    # loi_rasts <- terra::rast(loi_rast_input, c(numb_rast, cat_rast))
-    #
-    # if (!is.null(iDW_rast_input)) {
-    #   iDW_rasts <- lapply(iDW_cols, function(x) terra::rast(iDW_rast_input, x))
-    #   iDW_rasts <- terra::rast(iDW_rasts)
-    # }
-    #
-    # all_rasts <- list(loi_rasts, iDW_rasts) #loi_clamp_rasts
-    # all_rasts <- all_rasts[!sapply(all_rasts, is.null)]
-    # all_rasts <- terra::rast(all_rasts)
     all_rasts <- terra::unwrap(all_rasts)
-    all_rasts <- terra::subset(all_rasts,c(numb_rast, cat_rast, iDW_cols))
+    all_rasts <- terra::subset(all_rasts, c(numb_rast, cat_rast, iDW_cols))
 
     fun <- c()
     if (median) {
@@ -817,252 +621,108 @@ fasttrib_points <- function(
     if (length(fun) > 0) {
       subbasins <- sf::read_sf(
         input_file,
-        query = ihydro:::build_sql_in(catch_source, "link_id", unique(link_id))
+        query = ihydro:::.build_sql_in(catch_source, "link_id", unique(link_id))
       )
 
+      max_cells_in_memory <- ihydro:::.max_cells_in_memory_helper(
+        mem_fraction = mem_fraction,
+        n_cores = n_cores
+      )
 
-      extra_out <- ihydro:::.extract_fun(
-        all_rasts = all_rasts,
-        subbasins = subbasins,
-        x_cols = numb_rast,
-        weight_cols = NULL,
+      extra_out <- exactextractr::exact_extract(
+        x = all_rasts,
+        y = subbasins,
         fun = fun,
         quantiles = quantiles,
-        mem_fraction = mem_fraction,
-        n_cores = n_cores,
-        include_count = include_count
+        default_value = NA_real_,
+        max_cells_in_memory = max_cells_in_memory,
+        progress = FALSE,
+        force_df = TRUE,
+        full_colnames = TRUE
       )
-    } else {
 
+      sub_tbl <- tibble::tibble(
+        link_id_otarget = link_id,
+        subbasin_link_id = NA_character_
+      )
+
+    } else {
       subbsn_rast <- terra::unwrap(subbsn_rast)
-      pairs <- data.table::CJ(c(numb_rast,cat_rast), iDW_cols, sorted = FALSE)
+      pairs <- tibble::tibble(
+        loi = c(numb_rast, cat_rast),
+        iDW = list(iDW_cols)
+      )
+      pairs <- tidyr::unnest(pairs, iDW)
       pairs$new_cols <- paste(pairs[[1]], pairs[[2]], sep = ".")
       pairs$count_col <- paste(pairs[[2]], pairs[[1]], sep = ".")
       pairs <- tibble::as_tibble(pairs)
 
+      max_cells_in_memory <- ihydro:::.max_cells_in_memory_helper(
+        mem_fraction = mem_fraction,
+        n_cores = n_cores,
+        ncol = terra::nlyr(all_rasts)
+      )
+
       stat_fns <- list(
         sum = ~ {
-          if (sum(!is.na(.x)) == 0) return(NA_real_)
+          if (sum(!is.na(.x)) == 0) {
+            return(NA_real_)
+          }
           sum(.x, na.rm = TRUE)
         },
         mean = ~ {
-          if (sum(!is.na(.x)) == 0) return(NA_real_)
+          if (sum(!is.na(.x)) == 0) {
+            return(NA_real_)
+          }
           mean(.x, na.rm = TRUE)
         },
         stdev = ~ {
-          if (sum(!is.na(.x)) < 2) return(NA_real_)
-          sd(.x, na.rm = TRUE)
+          if (sum(!is.na(.x)) < 2) {
+            return(NA_real_)
+          }
+          stats::sd(.x, na.rm = TRUE)
         },
         variance = ~ {
-          if (sum(!is.na(.x)) < 2) return(NA_real_)
-          var(.x, na.rm = TRUE)
+          if (sum(!is.na(.x)) < 2) {
+            return(NA_real_)
+          }
+          stats::var(.x, na.rm = TRUE)
         },
         count = ~ sum(!is.na(.x)),
         min = ~ {
-          if (sum(!is.na(.x)) == 0) return(NA_real_)
+          if (sum(!is.na(.x)) == 0) {
+            return(NA_real_)
+          }
           min(.x, na.rm = TRUE)
         },
         max = ~ {
-          if (sum(!is.na(.x)) == 0) return(NA_real_)
+          if (sum(!is.na(.x)) == 0) {
+            return(NA_real_)
+          }
           max(.x, na.rm = TRUE)
         }
       )
 
+      sub_sum <- ihydro:::.extract_subbasin_stats(
+        link_id = link_id,
+        subbsn_rast = subbsn_rast,
+        all_rasts = all_rasts,
+        numb_rast = numb_rast,
+        cat_rast = cat_rast,
+        iDW_cols = iDW_cols,
+        pairs = pairs,
+        stat_fns = stat_fns,
+        max_cells_in_memory = max_cells_in_memory
+      )
 
-      sub_sum <- lapply(
-        as.numeric(link_id) * 1000,
-        function(x) {
-          cells <- terra::cells(
-            subbsn_rast,
-            x
-          )
+      extra_out <- sub_sum
 
-          vals <- terra::extract(
-            all_rasts,
-            cells$link_id
-          )
+      sub_tbl <- tibble::tibble(
+        link_id_otarget = NA_character_,
+        subbasin_link_id = extra_out$link_id
+      )
 
-          vals <- tibble::as_tibble(vals)
-
-          out <- list()
-          out[[length(out)+1]] <- tibble::tibble(
-            count.count_internal = length(cells$link_id)
-          )
-
-
-          if (length(numb_rast) > 0) {
-            out[[length(out)+1]] <- dplyr::summarise(
-              tibble::as_tibble(vals),
-              dplyr::across(
-                dplyr::any_of(numb_rast),
-                .fns = stat_fns,
-                .names = "{.fn}.{.col}"
-              )
-            )
-          }
-
-          if (length(cat_rast) > 0) {
-            out[[length(out)+1]] <- dplyr::summarise(
-              tibble::as_tibble(vals),
-              dplyr::across(
-                dplyr::any_of(cat_rast),
-                .fns = stat_fns[names(stat_fns) == "sum"],
-                .names = "{.fn}.{.col}"
-              )
-            )
-          }
-
-          if (length(iDW_cols) > 0) {
-            out[[length(out)+1]] <- dplyr::summarise(
-              tibble::as_tibble(vals),
-              dplyr::across(
-                dplyr::any_of(iDW_cols),
-                .fns = stat_fns[names(stat_fns) == "sum"],
-                .names = "{.fn}.{.col}"
-              )
-            )
-          }
-
-          for (i in seq_len(nrow(pairs))) {
-
-            out[[length(out)+1]] <- tibble::tibble(
-              weighted_mean = suppressWarnings(Hmisc::wtd.mean(vals[[pairs[[1]][i]]], vals[[pairs[[2]][i]]])),
-              weighted_variance = suppressWarnings(Hmisc::wtd.var(vals[[pairs[[1]][i]]], vals[[pairs[[2]][i]]])),
-              weighted_sum = sum(vals[[pairs[[1]][i]]] * vals[[pairs[[2]][i]]],na.rm=T)
-            )
-            colnames(out[[length(out)]]) <- paste(
-              colnames(out[[length(out)]]),
-              pairs[[3]][[i]],
-              sep = "."
-            )
-
-            out[[length(out)+1]] <- tibble::tibble(
-              weighted_sum = sum(!is.na(vals[[pairs[[1]][i]]]) * vals[[pairs[[2]][i]]],na.rm=T)
-            )
-            colnames(out[[length(out)]]) <- paste(
-              colnames(out[[length(out)]]),
-              pairs[[4]][[i]],
-              sep = "."
-            )
-          }
-
-          purrr::list_cbind(out)
-
-        })
-
-      extra_out <- purrr::list_rbind(sub_sum)
-
-
-      #
-      #
-      #
-      #
-      #   iDW_out <- ihydro:::.extract_fun(
-      #     all_rasts = all_rasts,
-      #     subbasins = subbasins,
-      #     x_cols = iDW_cols,
-      #     weight_cols = NULL,
-      #     default_value = 0,
-      #     default_weight = NA_real_,
-      #     fun = "sum",
-      #     mem_fraction = mem_fraction,
-      #     n_cores = n_cores,
-      #     include_count = include_count
-      #   )
-      #
-      #   if (loi_summary) {
-      #     numb_out <- ihydro:::.extract_fun(
-      #       all_rasts = all_rasts,
-      #       subbasins = subbasins,
-      #       x_cols = c(numb_rast,cat_rast),
-      #       weight_cols = NULL,
-      #       default_value = NA_real_,
-      #       default_weight = NA_real_,
-      #       fun = c("sum", "mean", "stdev", "variance", "count", "min", "max"),
-      #       mem_fraction = mem_fraction,
-      #       n_cores = n_cores,
-      #       include_count = FALSE
-      #     )
-      #
-      #     # if (length(numb_rast) > 0) {
-      #     #   numb_out <- ihydro:::.extract_fun(
-      #     #     all_rasts = all_rasts,
-      #     #     subbasins = subbasins,
-      #     #     x_cols = c(numb_rast),
-      #     #     weight_cols = NULL,
-      #     #     default_value = NA_real_,
-      #     #     default_weight = NA_real_,
-      #     #     fun = c("sum", "mean", "stdev", "variance", "count", "min", "max"),
-      #     #     mem_fraction = mem_fraction,
-      #     #     n_cores = n_cores,
-      #     #     include_count = FALSE
-      #     #   )
-      #     # }
-      #     #
-      #     # if (length(cat_rast) > 0) {
-      #     #   cat_out <- ihydro:::.extract_fun(
-      #     #     all_rasts = all_rasts,
-      #     #     subbasins = subbasins,
-      #     #     x_cols = c(cat_rast),
-      #     #     weight_cols = NULL,
-      #     #     default_value = 0,
-      #     #     default_weight = NA_real_,
-      #     #     fun = c("sum"),
-      #     #     mem_fraction = mem_fraction,
-      #     #     n_cores = n_cores,
-      #     #     include_count = FALSE
-      #     #   )
-      #     # }
-      #   }
-      #
-      #   if (length(iDW_cols) > 0) {
-      #     numb_out_iDW <- ihydro:::.extract_fun(
-      #       all_rasts = all_rasts,
-      #       subbasins = subbasins,
-      #       x_cols = c(numb_rast,cat_rast),
-      #       weight_cols = iDW_cols,
-      #       default_value = NA_real_,
-      #       default_weight = 0,
-      #       fun = c("weighted_sum", "weighted_mean", "weighted_variance"),
-      #       mem_fraction = mem_fraction,
-      #       n_cores = n_cores,
-      #       include_count = FALSE
-      #     )
-      #
-      #     # if (length(numb_rast) > 0) {
-      #     #   numb_out_iDW <- ihydro:::.extract_fun(
-      #     #     all_rasts = all_rasts,
-      #     #     subbasins = subbasins,
-      #     #     x_cols = c(numb_rast),
-      #     #     weight_cols = iDW_cols,
-      #     #     default_value = NA_real_,
-      #     #     default_weight = 0,
-      #     #     fun = c("weighted_sum", "weighted_mean", "weighted_variance"),
-      #     #     mem_fraction = mem_fraction,
-      #     #     n_cores = n_cores,
-      #     #     include_count = FALSE
-      #     #   )
-      #     # }
-      #     # if (length(cat_rast) > 0) {
-      #     #   cat_out_iDW <- ihydro:::.extract_fun(
-      #     #     all_rasts = all_rasts,
-      #     #     subbasins = subbasins,
-      #     #     x_cols = c(cat_rast),
-      #     #     weight_cols = iDW_cols,
-      #     #     default_value = 0,
-      #     #     default_weight = 0,
-      #     #     fun = c("weighted_sum"),
-      #     #     mem_fraction = mem_fraction,
-      #     #     n_cores = n_cores,
-      #     #     include_count = FALSE
-      #     #   )
-      #     # }
-      #   }
-    }
-
-    if (catch_source == "Catchment_poly") {
-      link_id_otarget <- link_id
-      link_id <- NA_character_
+      extra_out <- dplyr::select(extra_out, -link_id)
     }
 
     if (!is.null(progressor)) {
@@ -1072,48 +732,232 @@ fasttrib_points <- function(
     gg <- gc(verbose = FALSE)
 
     dplyr::bind_cols(
-      tibble::tibble(
-        link_id_otarget = link_id_otarget,
-        subbasin_link_id = link_id
-      ),
-      #iDW_out,
-      #numb_out,
-      #cat_out,
-      #numb_out_iDW,
-      #cat_out_iDW,
+      sub_tbl,
       extra_out
     )
   }
-#)
+)
+
+#' Extract raster attributes for a single subbasin (with memory-safe batching)
+#'
+#' @param link_ids  Character vector of subbasin link IDs.
+#' @param subbsn_rast  Unwrapped `SpatRaster` with subbasin IDs (link_id * 1000).
+#' @param all_rasts  Unwrapped `SpatRaster` stack (LOI + iDW layers).
+#' @param numb_rast  Character vector of numeric LOI layer names.
+#' @param cat_rast   Character vector of categorical LOI layer names.
+#' @param pairs      Tibble with columns `loi`, `iDW` (unnested), `new_cols`, `count_col`.
+#' @param stat_fns   Named list of lambda functions passed to `dplyr::across`.
+#' @param max_cells_in_memory  Integer upper bound on cells loaded at once.
+#' @return A tibble with one row per `link_id`.
+#' @noRd
+.proc_batch <- function(
+  link_id,
+  sub_sel = NULL,
+  subbsn_rast,
+  all_rasts,
+  numb_rast,
+  cat_rast,
+  iDW_cols,
+  stat_fns,
+  pairs
+) {
+  # Don't know why round is necessary here
+  cells <- terra::cells(
+    subbsn_rast,
+    round(as.numeric(link_id) * 1000)
+  )
+
+  if (!is.null(sub_sel)) {
+    cells$link_id <- cells$link_id[sub_sel]
+  }
+
+  vals <- terra::extract(
+    all_rasts,
+    cells$link_id
+  )
+
+  vals <- tibble::as_tibble(vals)
+
+  out <- list()
+  out[[length(out) + 1]] <- tibble::tibble(
+    count.count_internal = length(cells$link_id)
+  )
+
+  if (length(numb_rast) > 0) {
+    out[[length(out) + 1]] <- dplyr::summarise(
+      tibble::as_tibble(vals),
+      dplyr::across(
+        dplyr::any_of(numb_rast),
+        .fns = stat_fns,
+        .names = "{.fn}.{.col}"
+      )
+    )
+  }
+
+  if (length(cat_rast) > 0) {
+    out[[length(out) + 1]] <- dplyr::summarise(
+      tibble::as_tibble(vals),
+      dplyr::across(
+        dplyr::any_of(cat_rast),
+        .fns = stat_fns[names(stat_fns) == "sum"],
+        .names = "{.fn}.{.col}"
+      )
+    )
+  }
+
+  if (length(iDW_cols) > 0) {
+    out[[length(out) + 1]] <- dplyr::summarise(
+      tibble::as_tibble(vals),
+      dplyr::across(
+        dplyr::any_of(iDW_cols),
+        .fns = stat_fns[names(stat_fns) == "sum"],
+        .names = "{.fn}.{.col}"
+      )
+    )
+  }
+
+  for (i in seq_len(nrow(pairs))) {
+    out[[length(out) + 1]] <- tibble::tibble(
+      weighted_mean = suppressWarnings(Hmisc::wtd.mean(
+        vals[[pairs[[1]][i]]],
+        vals[[pairs[[2]][i]]]
+      )),
+      weighted_variance = suppressWarnings(Hmisc::wtd.var(
+        vals[[pairs[[1]][i]]],
+        vals[[pairs[[2]][i]]]
+      )),
+      weighted_sum = sum(
+        vals[[pairs[[1]][i]]] * vals[[pairs[[2]][i]]],
+        na.rm = T
+      )
+    )
+    colnames(out[[length(out)]]) <- paste(
+      colnames(out[[length(out)]]),
+      pairs[[3]][[i]],
+      sep = "."
+    )
+
+    out[[length(out) + 1]] <- tibble::tibble(
+      weighted_sum = sum(
+        !is.na(vals[[pairs[[1]][i]]]) * vals[[pairs[[2]][i]]],
+        na.rm = T
+      )
+    )
+    colnames(out[[length(out)]]) <- paste(
+      colnames(out[[length(out)]]),
+      pairs[[4]][[i]],
+      sep = "."
+    )
+  }
+
+  out <- purrr::list_cbind(out)
+  out$link_id <- link_id
+
+  return(out)
+}
+
+
+#' Extract and summarise per-subbasin raster statistics with memory-safe batching
+#'
+#' @param link_ids  Character vector of subbasin link IDs.
+#' @param subbsn_rast  Unwrapped `SpatRaster` with subbasin IDs (link_id * 1000).
+#' @param all_rasts  Unwrapped `SpatRaster` stack (LOI + iDW layers).
+#' @param numb_rast  Character vector of numeric LOI layer names.
+#' @param cat_rast   Character vector of categorical LOI layer names.
+#' @param pairs      Tibble with columns `loi`, `iDW` (unnested), `new_cols`, `count_col`.
+#' @param stat_fns   Named list of lambda functions passed to `dplyr::across`.
+#' @param max_cells_in_memory  Integer upper bound on cells loaded at once.
+#' @return A tibble with one row per `link_id`.
+#' @noRd
+.extract_subbasin_stats <- function(
+  link_ids,
+  subbsn_rast,
+  all_rasts,
+  numb_rast,
+  cat_rast,
+  iDW_cols,
+  pairs,
+  stat_fns,
+  max_cells_in_memory
+) {
+  # Count cells per link_id
+  cell_counts <- lapply(
+    as.numeric(link_ids) * 1000,
+    function(x) {
+      # Don't know why round is necessary here
+      length(terra::cells(subbsn_rast, round(x))$link_id)
+    }
+  )
+  names(cell_counts) <- link_ids
+
+  # Batch link_ids
+  batches <- lapply(
+    cell_counts,
+    function(x) {
+      split(
+        seq_len(x),
+        rep(
+          1:ceiling(x / max_cells_in_memory),
+          each = max_cells_in_memory,
+          length.out = x
+        )
+      )
+    }
+  )
+
+  # Process each batch
+  batch_results <- purrr::map2(
+    names(batches),
+    batches,
+    function(link_id, x) {
+      lapply(x, function(y) {
+        ihydro:::.proc_batch(
+          link_id = link_id,
+          sub_sel = y,
+          subbsn_rast = subbsn_rast,
+          all_rasts = all_rasts,
+          numb_rast = numb_rast,
+          cat_rast = cat_rast,
+          iDW_cols = iDW_cols,
+          stat_fns = stat_fns,
+          pairs = pairs
+        )
+      })
+    }
+  )
+
+  batch_results <- lapply(batch_results, purrr::list_rbind)
+  purrr::list_rbind(batch_results)
+}
 
 #' Create subbasin extraction plan
 #' @noRd
 .extract_planner <- function(
-    input,
-    subb_ids,
-    loi_rast_input,
-    numb_rast,
-    cat_rast,
-    iDW_rast_input,
-    iDW_cols,
-    mem_fraction = 0.5,
-    n_cores = 1L,
-    chunks_per_worker = 1L,
-    fun = c(
-      "mean",
-      "sd",
-      "var",
-      "cv",
-      "min",
-      "max",
-      "sum",
-      "count",
-      "median",
-      "quantile"
-    ),
-    quantiles = NULL,
-    temp_dir = NULL,
-    verbose = FALSE
+  input,
+  subb_ids,
+  loi_rast_input,
+  numb_rast,
+  cat_rast,
+  iDW_rast_input,
+  iDW_cols,
+  mem_fraction = 0.5,
+  n_cores = 1L,
+  chunks_per_worker = 1L,
+  fun = c(
+    "mean",
+    "sd",
+    "var",
+    "cv",
+    "min",
+    "max",
+    "sum",
+    "count",
+    "median",
+    "quantile"
+  ),
+  quantiles = NULL,
+  temp_dir = NULL,
+  verbose = FALSE
 ) {
   fun <- match.arg(fun, several.ok = TRUE)
 
@@ -1178,7 +1022,7 @@ fasttrib_points <- function(
 
   subbasins <- sf::read_sf(
     input$outfile,
-    query = build_sql_in(
+    query = .build_sql_in(
       "Subbasins_poly",
       "link_id",
       as.numeric(unique(subb_lookup$link_id))
@@ -1216,12 +1060,7 @@ fasttrib_points <- function(
   tasks_o <- NULL
   tasks_lump <- NULL
 
-  # develop ws_s tasks
-  # count_with_o <- TRUE
-  # if (length(ws_s) > 0L) {
   if (length(ws_s) > 0L | length(ws_o) > 0L) {
-    #   count_with_o <- FALSE
-    # group accordinging to location
     tasks_s_group <- safe_kmeans(
       tasks[, c("link_id", "cent_x", "cent_y")],
       n_jobs
@@ -1256,54 +1095,6 @@ fasttrib_points <- function(
       }
     )
   }
-
-  # # develop ws_o tasks
-  # if (length(ws_o) > 0L) {
-  #   subb_lookup <- subb_lookup |>
-  #     dplyr::left_join(
-  #       tasks[, c("link_id", "cent_x", "cent_y")],
-  #       by = c("link_id" = "link_id")
-  #     ) |>
-  #     dplyr::left_join(
-  #       tasks[, c("link_id", "unn_group")],
-  #       by = c("final_link_id" = "link_id")
-  #     )
-  #
-  #   tasks_o <- split(subb_lookup, subb_lookup$unn_group)
-  #
-  #   # group accordinging to location by unn_group
-  #   tasks_o <- lapply(tasks_o, function(x) {
-  #     x$group <- safe_kmeans(
-  #       dplyr::select(x, link_id = final_link_id, cent_x, cent_y),
-  #       n_jobs
-  #     )$cluster
-  #     x <- split(x, x$group)
-  #     return(x)
-  #   })
-  #
-  #   tasks_o <- unlist(tasks_o, recursive = F)
-  #
-  #   tasks_o <- lapply(
-  #     tasks_o,
-  #     function(x) {
-  #       list(
-  #         input_file = input$outfile,
-  #         link_id = x$link_id,
-  #         link_id_otarget = x$final_link_id,
-  #         loi_rast_input = loi_rast_input$outfile,
-  #         loi_summary = FALSE,
-  #         numb_rast = numb_rast,
-  #         cat_rast = cat_rast,
-  #         iDW_rast_input = iDW_rast_input$outfile,
-  #         catch_source = "Catchment_poly",
-  #         iDW_cols = paste(ws_o, unique(x$unn_group), sep = "_unn_group"),
-  #         mem_fraction = mem_fraction,
-  #         n_cores = n_cores,
-  #         include_count = count_with_o
-  #       )
-  #     }
-  #   )
-  # }
 
   # develop ws_lump tasks
   if ("median" %in% fun || !is.null(quantiles)) {
@@ -1349,11 +1140,11 @@ fasttrib_points <- function(
 #' @return Tibble with one row per catchment (link_id_otarget), columns for each summary
 #' @noRd
 .summarize_catchment <- function(
-    extract_value,
-    weighting_scheme,
-    loi_numeric_stats,
-    numeric_vars,
-    cat_vars
+  extract_value,
+  weighting_scheme,
+  loi_numeric_stats,
+  numeric_vars,
+  cat_vars
 ) {
   # Helper: Pivot and clean
   clean_data <- function(df) {
@@ -1376,8 +1167,7 @@ fasttrib_points <- function(
     tibble::as_tibble(purrr::compact(unlist(res, recursive = FALSE)))
   }
 
-  # Summarize ws_s (S-targeted iDW and lumped stats)
-  summarize_ws_s <- function(df) {
+  summarize_ws_so <- function(df) {
     res <- list()
     # Lumped stats
     if ("lumped" %in% weighting_scheme) {
@@ -1446,7 +1236,7 @@ fasttrib_points <- function(
         }
       }
     }
-    # S-targeted iDW
+    # S/O-targeted iDW
     for (ws in intersect(
       weighting_scheme,
       c("iFLS", "HAiFLS", "iFLO", "HAiFLO")
@@ -1508,70 +1298,6 @@ fasttrib_points <- function(
     tibble::as_tibble(res)
   }
 
-  # # Summarize ws_o (O-targeted iDW only)
-  # summarize_ws_o <- function(df) {
-  #   gp <- unique(df$unn_group)
-  #   gp <- gp[!is.na(gp)]
-  #   gp <- paste0("_unn_group", gp)
-  #   res <- list()
-  #   for (ws in intersect(weighting_scheme, c("iFLO", "HAiFLO"))) {
-  #     for (var in numeric_vars) {
-  #       mean_col <- paste0("weighted_mean.", var, ".", ws, gp)
-  #       var_col <- paste0("weighted_variance.", var, ".", ws, gp)
-  #       sum_col <- paste0("weighted_sum.", var, ".", ws, gp)
-  #       wt_col <- paste0("weighted_sum.", ws, gp, ".", var)
-  #       cnt_col <- "count.count_internal"
-  #       if (all(c(mean_col, var_col, wt_col) %in% names(df))) {
-  #         sub_mean <- df[[mean_col]]
-  #         sub_var <- df[[var_col]]
-  #         sub_wt <- df[[wt_col]]
-  #         sub_cnt <- df[[cnt_col]]
-  #         if ("mean" %in% loi_numeric_stats) {
-  #           res[[paste0(var, "_", ws, "_mean")]] <- combine_weighted_mean(
-  #             sub_mean,
-  #             sub_wt,
-  #             sub_cnt
-  #           )
-  #         }
-  #         if ("sd" %in% loi_numeric_stats) {
-  #           res[[paste0(var, "_", ws, "_sd")]] <- combine_weighted_sample_sd(
-  #             sub_mean,
-  #             sub_var,
-  #             sub_wt,
-  #             sub_cnt
-  #           )
-  #         }
-  #         if ("var" %in% loi_numeric_stats) {
-  #           res[[paste0(var, "_", ws, "_var")]] <- combine_weighted_sample_var(
-  #             sub_mean,
-  #             sub_var,
-  #             sub_wt,
-  #             sub_cnt
-  #           )
-  #         }
-  #         if ("sum" %in% loi_numeric_stats && sum_col %in% names(df)) {
-  #           res[[paste0(var, "_", ws, "_sum")]] <- sum(
-  #             df[[sum_col]],
-  #             na.rm = TRUE
-  #           )
-  #         }
-  #       }
-  #     }
-  #     for (cat in cat_vars) {
-  #       sum_col <- paste0("weighted_sum.", cat, ".", ws, gp)
-  #       wt_col <- paste0("sum.", ws, gp)
-  #       if (sum_col %in% names(df) && wt_col %in% names(df)) {
-  #         res[[paste0(cat, "_", ws, "_prop")]] <- sum(
-  #           df[[sum_col]],
-  #           na.rm = TRUE
-  #         ) /
-  #           sum(df[[wt_col]], na.rm = TRUE)
-  #       }
-  #     }
-  #   }
-  #   tibble::as_tibble(res)
-  # }
-
   # Main logic
   result <- list()
   if (!is.null(extract_value$ws_lump) && nrow(extract_value$ws_lump) > 0) {
@@ -1586,18 +1312,8 @@ fasttrib_points <- function(
     result$ws_s <- ws_s |>
       dplyr::group_by(link_id_otarget) |>
       tidyr::nest() |>
-      dplyr::mutate(summary = purrr::map(data, summarize_ws_s))
+      dplyr::mutate(summary = purrr::map(data, summarize_ws_so))
   }
-  # if (!is.null(extract_value$ws_o)) {
-  #   ws_o <- clean_data(extract_value$ws_o)
-  #   result$ws_o <- ws_o |>
-  #     dplyr::bind_rows(
-  #       dplyr::select(ws_s, count.count_internal)
-  #     ) |>
-  #     dplyr::group_by(link_id_otarget) |>
-  #     tidyr::nest() |>
-  #     dplyr::mutate(summary = purrr::map(data, summarize_ws_o))
-  # }
 
   # Unnest and join all summaries
   result <- purrr::map(

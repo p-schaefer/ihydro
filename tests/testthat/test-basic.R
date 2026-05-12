@@ -1,10 +1,11 @@
+testthat::skip_on_cran()
+
 testthat::test_that("ex_data provides example data and as.ihydro works", {
-  testthat::skip_on_cran()
   # ex_data should return paths/objects
   dem <- ihydro::ex_data("elev_ned_30m.tif")
   pts <- ihydro::ex_data("sites_nc.shp")
   expect_true(inherits(dem, "SpatRaster") || inherits(dem, "character"))
-  expect_true(inherits(pts, "sf") || inherits(pts, "character"))
+  expect_true(inherits(pts, "SpatVector") || inherits(pts, "character"))
 
   # create a minimal gpkg using process_loi or process_flowdir later; instead
   # verify as.ihydro can wrap an existing gpkg path (create temporary gpkg)

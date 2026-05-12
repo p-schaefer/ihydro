@@ -96,17 +96,17 @@ trace_flowpaths <- function(
   return_products = FALSE,
   verbose = FALSE
 ) {
-  check_ihydro(input)
+  .check_ihydro(input)
   stopifnot(
     is.logical(verbose),
     is.logical(pwise_dist),
     is.logical(pwise_all_links)
   )
 
-  temp_dir <- ensure_temp_dir(temp_dir)
+  temp_dir <- .ensure_temp_dir(temp_dir)
   db_fp <- input$outfile
 
-  site_id_col <- read_site_id_col(db_fp)
+  site_id_col <- .read_site_id_col(db_fp)
 
   final_links <- read_ihydro(input, "stream_links_attr") |>
     dplyr::mutate(

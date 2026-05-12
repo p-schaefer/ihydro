@@ -127,7 +127,7 @@ process_hydrology <- function(
     }
   }
 
-  temp_dir <- ensure_temp_dir(temp_dir)
+  temp_dir <- .ensure_temp_dir(temp_dir)
   output_filename <- normalizePath(output_filename, mustWork = FALSE)
   if (!grepl("\\.gpkg$", output_filename)) {
     cli::cli_abort("{.arg output_filename} must end in {.val .gpkg}.")

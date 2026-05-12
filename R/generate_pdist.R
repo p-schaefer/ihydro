@@ -96,7 +96,7 @@ generate_pdist <- function(
   return_products = FALSE,
   pwise_all_links = FALSE
 ) {
-  check_ihydro(input)
+  .check_ihydro(input)
 
   stopifnot(is.logical(verbose), is.logical(pwise_all_links))
 
@@ -109,7 +109,7 @@ generate_pdist <- function(
   con <- DBI::dbConnect(RSQLite::SQLite(), db_fp)
   on.exit(DBI::dbDisconnect(con), add = TRUE)
 
-  site_id_col <- read_site_id_col(db_fp)
+  site_id_col <- .read_site_id_col(db_fp)
   if (pwise_all_links) {
     site_id_col <- "link_id"
   }

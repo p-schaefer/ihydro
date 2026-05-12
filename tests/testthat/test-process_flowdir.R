@@ -15,7 +15,7 @@ testthat::test_that("process_flowdir runs and produces expected layers", {
     threshold = 100L,
     return_products = FALSE,
     output_filename = out_gpkg,
-    temp_dir = tempdir(),
+    temp_dir = tempfile(),
     verbose = FALSE
   )
 

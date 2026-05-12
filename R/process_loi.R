@@ -135,7 +135,7 @@ process_loi <- function(
   write_strategy <- match.arg(write_strategy)
 
   if (!is.null(input)) {
-    check_ihydro(input)
+    .check_ihydro(input)
   }
   stopifnot(
     is.logical(return_products),
@@ -143,7 +143,7 @@ process_loi <- function(
     is.logical(overwrite)
   )
 
-  temp_dir <- ensure_temp_dir(temp_dir)
+  temp_dir <- .ensure_temp_dir(temp_dir)
 
   if (!inherits(num_inputs, "list")) {
     cli::cli_abort("{.arg num_inputs} must be a named list.")
@@ -254,6 +254,7 @@ process_loi <- function(
 
     for (nm in names(variable_names)) {
       ip <- process_input(all_inputs[[nm]])
+      ip <- terra::subset(ip,variable_names[[nm]])
       if (!variable_names[[nm]] %in% names(ip)) {
         cli::cli_abort(
           "Variable {.val {variable_names[[nm]]}} not found in input {.val {nm}}."
@@ -281,15 +282,7 @@ process_loi <- function(
   }
 
   # ── Process LOI (parallel) ─────────────────────────────────────────────
-  n_cores <- n_workers()
-  max_cores_opt <- getOption("parallelly.maxWorkers.localhost")
-  on.exit(options(parallelly.maxWorkers.localhost = max_cores_opt), add = TRUE)
-  options(parallelly.maxWorkers.localhost = n_cores)
-
-  if (n_cores > 1) {
-    oplan <- future::plan(future::multisession, workers = n_cores)
-    on.exit(future::plan(oplan), add = TRUE)
-  }
+  n_cores <- .n_workers()
 
   temp_dir_save <- file.path(temp_dir, basename(tempfile()))
   dir.create(temp_dir_save)
@@ -343,7 +336,7 @@ process_loi <- function(
           if (verbose) {
             message("Writing: ", names(r))
           }
-          res <- try(write_raster_gpkg(r, output_filename), silent = TRUE)
+          res <- try(.write_raster_gpkg(r, output_filename), silent = TRUE)
           if (inherits(res, "try-error")) {
             msg <- conditionMessage(attr(res, "condition"))
             if (!msg %in% c("stoi", "stol")) stop(msg)
@@ -378,7 +371,7 @@ process_loi <- function(
       if (verbose) {
         message("Writing: ", names(r))
       }
-      res <- try(write_raster_gpkg(r, output_filename), silent = TRUE)
+      res <- try(.write_raster_gpkg(r, output_filename), silent = TRUE)
       if (inherits(res, "try-error")) {
         msg <- conditionMessage(attr(res, "condition"))
         if (!msg %in% c("stoi", "stol")) stop(msg)
@@ -489,10 +482,6 @@ process_single_loi_worker <- carrier::crate(
     overwrite,
     p
   ) {
-    #suppressPackageStartupMessages(library(sf)) # Not sure why, but this is necessary
-    #options(dplyr.summarise.inform = FALSE, scipen = 999)
-    `%>%` <- magrittr::`%>%`
-
     temp_sub <- file.path(temp_dir, basename(tempfile()))
     dir.create(temp_sub)
 
@@ -541,65 +530,3 @@ process_single_loi_worker <- carrier::crate(
   }
 )
 
-#' Drain temp raster files into gpkg while future is running
-#' @noRd
-drain_temp_rasters <- function(
-  temp_dir_save,
-  output_filename,
-  future_proc,
-  verbose
-) {
-  future_status <- future::futureOf(future_proc)
-
-  write_available <- function() {
-    fl <- list.files(temp_dir_save, "\\.tif$", full.names = TRUE)
-    fl <- fl[file.mtime(fl) < Sys.time() - 60]
-    for (f in fl) {
-      r <- try(terra::rast(f), silent = TRUE)
-      if (inherits(r, "try-error")) {
-        next
-      }
-      if (verbose) {
-        message("Writing: ", names(r))
-      }
-      res <- try(write_raster_gpkg(r, output_filename), silent = TRUE)
-      if (inherits(res, "try-error")) {
-        msg <- conditionMessage(attr(res, "condition"))
-        if (!msg %in% c("stoi", "stol")) stop(msg)
-      }
-      file.remove(f)
-    }
-  }
-
-  while (!future::resolved(future_status)) {
-    Sys.sleep(0.5)
-    write_available()
-  }
-
-  Sys.sleep(5)
-
-  # Check for errors
-  stop_on_future_errors(future_proc)
-  #if (length(future_proc$result$conditions) > 0) {
-  #  errs <- purrr::keep(
-  #    purrr::map(future_proc$result$conditions, "condition"),
-  #    ~ inherits(., "error")
-  #  )
-  #  if (length(errs) > 0) stop(paste(errs, collapse = "\n"))
-  #}
-
-  # Final drain
-  fl <- list.files(temp_dir_save, "\\.tif$", full.names = TRUE)
-  for (f in fl) {
-    r <- terra::rast(f)
-    if (verbose) {
-      message("Writing: ", names(r))
-    }
-    res <- try(write_raster_gpkg(r, output_filename), silent = TRUE)
-    if (inherits(res, "try-error")) {
-      msg <- conditionMessage(attr(res, "condition"))
-      if (!msg %in% c("stoi", "stol")) stop(msg)
-    }
-    file.remove(f)
-  }
-}

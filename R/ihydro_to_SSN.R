@@ -23,9 +23,9 @@ ihydro_to_ssn <- function(
     lsn_path = NULL,
     verbose = FALSE
 ) {
-  check_ihydro(ihydro_obj)
+  .check_ihydro(ihydro_obj)
 
-  n_cores <- n_workers()
+  n_cores <- .n_workers()
   site_list <- .prep_sites(ihydro_obj, obs, pred)
 
   if (is.null(lsn_path)) {
@@ -115,7 +115,7 @@ ihydro_to_ssn <- function(
     lsn_path = NULL,
     verbose = FALSE
 ) {
-  check_ihydro(ihydro_obj)
+  .check_ihydro(ihydro_obj)
 
   stream_points <- .prep_ihydro_points(ihydro_obj)
 

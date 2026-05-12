@@ -8,10 +8,10 @@ generate_subbasins <- function(
   temp_dir = NULL,
   verbose = FALSE
 ) {
-  check_ihydro(input)
+  .check_ihydro(input)
   stopifnot(is.logical(return_products), is.logical(verbose))
 
-  temp_dir <- ensure_temp_dir(temp_dir)
+  temp_dir <- .ensure_temp_dir(temp_dir)
   db_fp <- input$outfile
 
   whitebox::wbt_options(
@@ -32,7 +32,7 @@ generate_subbasins <- function(
     )
   }
 
-  site_id_col <- read_site_id_col(db_fp)
+  site_id_col <- .read_site_id_col(db_fp)
 
   con <- DBI::dbConnect(RSQLite::SQLite(), db_fp)
   on.exit(DBI::dbDisconnect(con), add = TRUE)

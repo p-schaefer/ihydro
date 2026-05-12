@@ -923,6 +923,7 @@ final_attributes_sub <- fasttrib_points(
   target_o_type = c("point"),
   weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"), #
   loi_numeric_stats = c("mean", "sd", "median", "min", "max", "sum"),
+  quantiles = c(0.25,0.5,0.75),
   inv_function = function(x) {
     (x * 0.001 + 1)^-1
   },
@@ -977,7 +978,8 @@ dw_time <- system.time(
   Processed_HW <- prep_weights(
     input = hydro_out,
     output_filename = file.path(tempdir(), "Processed_HW_out.gpkg"),
-    weighting_scheme = c("iFLS", "iFLO", "HAiFLO", "HAiFLS")
+    weighting_scheme = c("iFLS", "iFLO", "HAiFLO", "HAiFLS"),
+    verbose = T
   )
 )
 
@@ -994,13 +996,25 @@ fasttrib_points_time <- system.time(
     weighting_scheme = c("lumped", "iFLS", "iFLO", "HAiFLO", "HAiFLS"),
     loi_numeric_stats = c("mean", "sd", "min", "max"),
     temp_dir = NULL,
-    verbose = F
+    verbose = T
   )
 )
 
-paste0("prep_weights() took ",round(dw_time[3] / 60, 2) ," minutes with ",future::nbrOfWorkers()," cores.")
+paste0("prep_weights() took ",
+       round(dw_time[3] / 60, 2),
+       " minutes with ",
+       future::nbrOfWorkers(),
+       " cores.")
 
-paste0("fasttrib_points() took ",round(fasttrib_points_time[3] / 60, 2) ," minutes with ",future::nbrOfWorkers()," cores.")
+paste0("fasttrib_points() took ",
+       round(fasttrib_points_time[3] / 60, 2),
+       " minutes to calculate ",
+       ncol(final_attributes_all) - 1,
+       " attributes across ",
+       nrow(final_attributes_all),
+       " reaches with ",
+       future::nbrOfWorkers(),
+       " cores.")
 
 ```
 
