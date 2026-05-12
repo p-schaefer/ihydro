@@ -116,7 +116,7 @@ prep_weights <- function(
 
   # ── Write rasters to temp ───────────────────────────────────────────────
   if (verbose) {
-    message("Gathering necessary layers")
+    cli::cli_alert_info("Gathering necessary layers")
   }
 
   lyr_sel <- c("dem_accum_d8", "dem_final")
@@ -202,7 +202,7 @@ prep_weights <- function(
   # ── Stream-targeted weights (iFLS, HAiFLS) ──────────────────────────────
   if (any(grepl("iFLS", weighting_scheme))) {
     if (verbose) {
-      message("Preparing stream-targeted inverse distance weights")
+      cli::cli_alert_info("Preparing stream-targeted inverse distance weights")
     }
 
     target_S <- terra::writeRaster(
@@ -240,7 +240,7 @@ prep_weights <- function(
   # ── Outlet-targeted weights (iFLO, HAiFLO) ──────────────────────────────
   if (any(grepl("iFLO", weighting_scheme))) {
     if (verbose) {
-      message("Preparing outlet-targeted inverse distance weights")
+      cli::cli_alert_info("Preparing outlet-targeted inverse distance weights")
     }
 
     dist_to_outlet_path <- file.path(temp_dir, "wbt_dist_to_outlet.tif")

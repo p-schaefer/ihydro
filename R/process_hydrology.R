@@ -136,7 +136,7 @@ process_hydrology <- function(
 
   # ── Pipeline ────────────────────────────────────────────────────────────
   if (verbose) {
-    message("Processing flow direction")
+    cli::cli_alert_info("Processing flow direction")
   }
   hydro_out <- process_flowdir(
     dem = dem,
@@ -153,7 +153,7 @@ process_hydrology <- function(
   )
 
   if (verbose) {
-    message("Generating vectors")
+    cli::cli_alert_info("Generating vectors")
   }
   hydro_out <- generate_vectors(
     input = hydro_out,
@@ -169,7 +169,7 @@ process_hydrology <- function(
   )
 
   if (verbose) {
-    message("Tracing flowpaths")
+    cli::cli_alert_info("Tracing flowpaths")
   }
   hydro_out <- trace_flowpaths(
     input = hydro_out,

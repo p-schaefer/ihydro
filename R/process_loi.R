@@ -164,7 +164,7 @@ process_loi <- function(
   }
   if (is.null(variable_names)) {
     if (verbose) {
-      message(
+      cli::cli_alert_info(
         "No variables specified in 'variable_names'; all variables will be used."
       )
     }
@@ -200,7 +200,7 @@ process_loi <- function(
 
   # ── Prepare DEM ─────────────────────────────────────────────────────────
   if (verbose) {
-    message("Preparing DEM")
+    cli::cli_alert_info("Preparing DEM")
   }
   if (!is.null(input)) {
     dem <- read_ihydro(input, "dem_final")
@@ -220,7 +220,7 @@ process_loi <- function(
 
   # Clip region
   if (is.null(clip_region)) {
-    clip_region <- terra::clamp(dem,1,1)
+    clip_region <- terra::clamp(dem, 1, 1)
     clip_region <- terra::as.polygons(clip_region)
   } else {
     clip_region <- process_input(
@@ -254,7 +254,7 @@ process_loi <- function(
 
     for (nm in names(variable_names)) {
       ip <- process_input(all_inputs[[nm]])
-      ip <- terra::subset(ip,variable_names[[nm]])
+      ip <- terra::subset(ip, variable_names[[nm]])
       if (!variable_names[[nm]] %in% names(ip)) {
         cli::cli_abort(
           "Variable {.val {variable_names[[nm]]}} not found in input {.val {nm}}."
@@ -288,7 +288,11 @@ process_loi <- function(
   dir.create(temp_dir_save)
 
   if (verbose) {
-    message("Processing layers of interest (LOI) across ", n_cores, " cores")
+    cli::cli_alert_info(
+      "Processing layers of interest (LOI) across ",
+      n_cores,
+      " cores"
+    )
   }
 
   ip <- list(
@@ -334,11 +338,11 @@ process_loi <- function(
         for (f in fl) {
           r <- terra::rast(f)
           if (verbose) {
-            message("Writing: ", names(r))
+            cli::cli_alert_info("Writing: ", names(r))
           }
           res <- try(.write_raster_gpkg(r, output_filename), silent = TRUE)
           if (inherits(res, "try-error")) {
-            msg <- conditionMessage(attr(res, "condition"))
+            msg <- cli::cli_alert_info(attr(res, "condition"))
             if (!msg %in% c("stoi", "stol")) stop(msg)
           }
           file.remove(f)
@@ -363,17 +367,17 @@ process_loi <- function(
     })
 
     if (verbose) {
-      message("Writing outputs")
+      cli::cli_alert_info("Writing outputs")
     }
     fl <- list.files(temp_dir_save, "\\.tif$", full.names = TRUE)
     for (f in fl) {
       r <- terra::rast(f)
       if (verbose) {
-        message("Writing: ", names(r))
+        cli::cli_alert_info("Writing: ", names(r))
       }
       res <- try(.write_raster_gpkg(r, output_filename), silent = TRUE)
       if (inherits(res, "try-error")) {
-        msg <- conditionMessage(attr(res, "condition"))
+        msg <- cli::cli_alert_info(attr(res, "condition"))
         if (!msg %in% c("stoi", "stol")) stop(msg)
       }
       file.remove(f)
@@ -393,7 +397,7 @@ process_loi <- function(
   )
 
   if (verbose) {
-    message("Saving metadata")
+    cli::cli_alert_info("Saving metadata")
   }
   con <- DBI::dbConnect(RSQLite::SQLite(), output_filename)
   dplyr::copy_to(
@@ -529,4 +533,3 @@ process_single_loi_worker <- carrier::crate(
     )
   }
 )
-

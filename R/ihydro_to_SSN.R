@@ -148,7 +148,7 @@ ihydro_to_ssn <- function(
   err_fl <- file.path(lsn_path, "node_errors.gpkg")
   if (file.exists(err_fl)) {
     if (verbose) {
-      message("Attempting to fix topology errors")
+      cli::cli_alert_info("Attempting to fix topology errors")
     }
 
     ers <- sf::read_sf(err_fl)

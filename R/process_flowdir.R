@@ -210,7 +210,7 @@ process_flowdir <- function(
     !is.null(burn_streams) && (!is.null(burn_depth) | is.null(burn_slope_depth))
   ) {
     if (verbose) {
-      message("Burning Streams into DEM")
+      cli::cli_alert_info("Burning Streams into DEM")
     }
 
     burn_dem(
@@ -228,7 +228,7 @@ process_flowdir <- function(
   # ── Depression correction ────────────────────────────────────────────────
   if (!is.null(depression_corr)) {
     if (verbose) {
-      message("Hydrologically conditioning DEM")
+      cli::cli_alert_info("Hydrologically conditioning DEM")
     }
 
     switch(
@@ -247,12 +247,12 @@ process_flowdir <- function(
 
   # ── D8 processing ───────────────────────────────────────────────────────
   if (verbose) {
-    message("Generating D8 pointer")
+    cli::cli_alert_info("Generating D8 pointer")
   }
   whitebox::wbt_d8_pointer(dem = "dem_final.tif", output = "dem_d8.tif")
 
   if (verbose) {
-    message("Generating D8 flow accumulation")
+    cli::cli_alert_info("Generating D8 flow accumulation")
   }
   whitebox::wbt_d8_flow_accumulation(
     input = "dem_d8.tif",
@@ -269,7 +269,7 @@ process_flowdir <- function(
 
   # ── Stream extraction ───────────────────────────────────────────────────
   if (verbose) {
-    message("Extracting streams")
+    cli::cli_alert_info("Extracting streams")
   }
   whitebox::wbt_extract_streams(
     flow_accum = "dem_accum_d8.tif",
@@ -278,7 +278,7 @@ process_flowdir <- function(
   )
   if (!is.null(min_length)) {
     if (verbose) {
-      message("Trimming short streams")
+      cli::cli_alert_info("Trimming short streams")
     }
     fr <- file.rename(
       file.path(temp_dir, "dem_streams_d8.tif"),
@@ -305,7 +305,7 @@ process_flowdir <- function(
     )
   } else {
     if (verbose) {
-      message("Trimming DEM streams to match burn_streams")
+      cli::cli_alert_info("Trimming DEM streams to match burn_streams")
     }
 
     res <- terra::res(dem)[[1]]
@@ -501,7 +501,7 @@ process_flowdir <- function(
     )
 
   if (verbose) {
-    message("Writing rasters to GeoPackage")
+    cli::cli_alert_info("Writing rasters to GeoPackage")
   }
   for (f in raster_files) {
     r <- terra::rast(file.path(temp_dir, f))

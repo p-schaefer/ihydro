@@ -45,7 +45,7 @@ generate_subbasins <- function(
   )
 
   if (verbose) {
-    message("Converting subbasins to polygons")
+    cli::cli_alert_info("Converting subbasins to polygons")
   }
   subb_rast <- terra::rast(file.path(temp_dir, "Subbasins.tif"))
   # subb_rast_cells <- subb_rast
@@ -87,7 +87,7 @@ generate_subbasins <- function(
   # ── Split subbasins at sampling points ──────────────────────────────────
   if (!is.null(points)) {
     if (verbose) {
-      message("Splitting subbasins at sampling points")
+      cli::cli_alert_info("Splitting subbasins at sampling points")
     }
     stream_links <- read_links(con, input, site_id_col) |>
       dplyr::mutate(link_id = as.numeric(link_id))

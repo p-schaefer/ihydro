@@ -108,7 +108,7 @@ get_catchment <- function(
   }
 
   if (verbose) {
-    message(
+    cli::cli_alert_info(
       "Generating catchments for ",
       nrow(still_needed),
       " targets (",

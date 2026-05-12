@@ -134,7 +134,7 @@ generate_vectors <- function(
   extra_attr <- match.arg(extra_attr, several.ok = TRUE)
 
   if (verbose) {
-    message("Attributing streamlines")
+    cli::cli_alert_info("Attributing streamlines")
   }
   hydro_out <- attrib_streamline(
     input = input,
@@ -150,7 +150,7 @@ generate_vectors <- function(
   )
 
   if (verbose) {
-    message("Generating subbasins")
+    cli::cli_alert_info("Generating subbasins")
   }
   hydro_out <- generate_subbasins(
     input = hydro_out,

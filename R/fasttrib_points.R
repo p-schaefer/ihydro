@@ -378,7 +378,7 @@ fasttrib_points <- function(
   sub_summ <- unlist(sub_summ, recursive = FALSE)
 
   if (verbose) {
-    message("Extracting attributes for each subbasin...")
+    cli::cli_alert_info("Extracting attributes for each subbasin.")
   }
   #browser()
 
@@ -445,7 +445,7 @@ fasttrib_points <- function(
   })
 
   if (verbose) {
-    message("Combining subbasin attributes across catchments.")
+    cli::cli_alert_info("Combining subbasin attributes across catchments.")
   }
 
   # Combine extracted attributes into a single table

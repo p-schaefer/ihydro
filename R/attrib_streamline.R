@@ -82,7 +82,7 @@ attrib_streamline <- function(
 
   # ── Compute stream link attributes ──────────────────────────────────────
   if (verbose) {
-    message("Calculating stream link attributes")
+    cli::cli_alert_info("Calculating stream link attributes")
   }
   compute_wbt_stream_attrs(temp_dir, extra_attr)
 
@@ -99,7 +99,7 @@ attrib_streamline <- function(
 
   # ── Extract point-level attributes ──────────────────────────────────────
   if (verbose) {
-    message("Extracting stream link attributes")
+    cli::cli_alert_info("Extracting stream link attributes")
   }
   final_points <- extract_stream_point_attrs(temp_dir, extra_attr)
 
@@ -109,7 +109,7 @@ attrib_streamline <- function(
 
   if (!is.null(points)) {
     if (verbose) {
-      message("Snapping points")
+      cli::cli_alert_info("Snapping points")
     }
 
     snap_result <- snap_points_to_network(
@@ -131,7 +131,7 @@ attrib_streamline <- function(
 
   # ── Identify upstream/downstream links ──────────────────────────────────
   if (verbose) {
-    message("Identifying upstream links")
+    cli::cli_alert_info("Identifying upstream links")
   }
   final_us <- identify_adjacent_links(
     final_points,
@@ -140,7 +140,7 @@ attrib_streamline <- function(
   )
 
   if (verbose) {
-    message("Identifying downstream links")
+    cli::cli_alert_info("Identifying downstream links")
   }
   final_ds <- identify_adjacent_links(
     final_points,
@@ -209,7 +209,7 @@ attrib_streamline <- function(
   )
 
   if (verbose) {
-    message("Writing vector layers to GeoPackage")
+    cli::cli_alert_info("Writing vector layers to GeoPackage")
   }
   for (lyr in c(
     "snapped_points",

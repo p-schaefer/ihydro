@@ -101,7 +101,7 @@ generate_pdist <- function(
   stopifnot(is.logical(verbose), is.logical(pwise_all_links))
 
   if (pwise_all_links) {
-    message("pwise_all_links = TRUE can be very slow for large datasets.")
+    cli::cli_alert_info("pwise_all_links = TRUE can be very slow for large datasets.")
   }
 
   db_fp <- input$outfile
@@ -118,7 +118,7 @@ generate_pdist <- function(
   DBI::dbExecute(con, "DROP TABLE IF EXISTS fcon_pwise_dist")
 
   if (verbose) {
-    message("Calculating flow-connected distances")
+    cli::cli_alert_info("Calculating flow-connected distances")
   }
 
   # Pre-compute catchment areas per pour point
@@ -197,7 +197,7 @@ generate_pdist <- function(
   DBI::dbExecute(con, "DROP TABLE IF EXISTS funcon_pwise_dist")
 
   if (verbose) {
-    message("Calculating flow-unconnected distances")
+    cli::cli_alert_info("Calculating flow-unconnected distances")
   }
 
   fcon <- dplyr::tbl(con, "fcon_pwise_dist")

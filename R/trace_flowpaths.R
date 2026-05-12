@@ -138,7 +138,7 @@ trace_flowpaths <- function(
   }
 
   if (verbose) {
-    message("Calculating unnested catchments")
+    cli::cli_alert_info("Calculating unnested catchments")
   }
   unnest_catchments(input)
 
@@ -212,7 +212,7 @@ trace_flowpath_fn <- function(
 
   # ── Downstream paths ────────────────────────────────────────────────────
   if (verbose) {
-    message("Calculating downstream flowpaths")
+    cli::cli_alert_info("Calculating downstream flowpaths")
   }
 
   progressr::with_progress(enable = verbose, {
@@ -388,7 +388,7 @@ trace_flowpath_fn <- function(
 
   # ── Upstream paths (reverse of downstream) ──────────────────────────────
   if (verbose) {
-    message("Calculating upstream flowpaths")
+    cli::cli_alert_info("Calculating upstream flowpaths")
   }
   DBI::dbExecute(con, "DROP TABLE IF EXISTS us_flowpaths")
 
