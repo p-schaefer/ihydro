@@ -97,11 +97,17 @@ trace_flowpaths <- function(
   verbose = FALSE
 ) {
   .check_ihydro(input)
-  stopifnot(
-    is.logical(verbose),
-    is.logical(pwise_dist),
-    is.logical(pwise_all_links)
-  )
+  if (!is.logical(verbose)) {
+    cli::cli_abort("{.arg verbose} must be {.code TRUE} or {.code FALSE}.")
+  }
+  if (!is.logical(pwise_dist)) {
+    cli::cli_abort("{.arg pwise_dist} must be {.code TRUE} or {.code FALSE}.")
+  }
+  if (!is.logical(pwise_all_links)) {
+    cli::cli_abort(
+      "{.arg pwise_all_links} must be {.code TRUE} or {.code FALSE}."
+    )
+  }
 
   temp_dir <- .ensure_temp_dir(temp_dir)
   db_fp <- input$outfile

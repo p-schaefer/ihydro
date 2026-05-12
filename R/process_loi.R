@@ -1,16 +1,6 @@
-#' Process layers of interest (LOI) for stream network attribution
-#'
-#' Standardises numeric and categorical landscape layers to match the DEM's
-#' resolution, extent, and CRS. Categorical layers are one-hot encoded.
-#'
-#' @details
-#' This function is designed to process any landscape layers of interest (LOI) that
-#' users want to attribute to the stream network. It can handle both numeric and
-#' categorical raster inputs, as well as vector inputs that will be rasterized.
-#' The processed layers are aligned to the DEM used for hydrological processing,
-#' ensuring consistency in resolution, extent, and CRS. Categorical layers are one-hot encoded
-#' to create separate binary rasters for each category. The processed layers are saved to a
-#' GeoPackage for efficient storage and retrieval.
+#' When run in parallel, the function processes each LOI independently across multiple cores.
+#' All layers are processed in parallel first, then written to the GeoPackage in a single
+#' sequential pass.al.
 #'
 #' When run in parallel, the function processes each LOI independently across multiple cores.
 #' The `write_strategy` argument controls how processed rasters are persisted to the GeoPackage:
@@ -31,12 +21,6 @@
 #' @param variable_names Named list of variable names to keep per input.
 #' @param return_products Logical. Return raster products?
 #' @param temp_dir Temporary file directory.
-#' @param write_strategy Character. How processed rasters are written to the
-#'   GeoPackage. `"sequential"` (default) waits for all parallel workers to
-#'   finish, then writes every raster to the GeoPackage in one pass — simplest
-#'   and avoids nested-future connection warnings. `"batched"` processes layers
-#'   in chunks of size `n_cores`, writing completed rasters to the GeoPackage
-#'   between chunks to reduce peak temporary disk usage.
 #' @param verbose Logical.
 #' @param overwrite Logical. Overwrite existing layers?
 #'
@@ -126,22 +110,25 @@ process_loi <- function(
   output_filename = NULL,
   variable_names = NULL,
   return_products = FALSE,
-  write_strategy = c("sequential", "batched"),
   temp_dir = NULL,
   verbose = FALSE,
   overwrite = TRUE
 ) {
   # ── Validation ──────────────────────────────────────────────────────────
-  write_strategy <- match.arg(write_strategy)
-
   if (!is.null(input)) {
     .check_ihydro(input)
   }
-  stopifnot(
-    is.logical(return_products),
-    is.logical(verbose),
-    is.logical(overwrite)
-  )
+  if (!is.logical(return_products)) {
+    cli::cli_abort(
+      "{.arg return_products} must be {.code TRUE} or {.code FALSE}."
+    )
+  }
+  if (!is.logical(verbose)) {
+    cli::cli_abort("{.arg verbose} must be {.code TRUE} or {.code FALSE}.")
+  }
+  if (!is.logical(overwrite)) {
+    cli::cli_abort("{.arg overwrite} must be {.code TRUE} or {.code FALSE}.")
+  }
 
   temp_dir <- .ensure_temp_dir(temp_dir)
 
@@ -239,8 +226,8 @@ process_loi <- function(
   )
 
   # ── Materialise inputs to disk ──────────────────────────────────────────
-  num_inputs <- purrr::map(num_inputs, materialise_input, temp_dir = temp_dir)
-  cat_inputs <- purrr::map(cat_inputs, materialise_input, temp_dir = temp_dir)
+  num_inputs <- purrr::map(num_inputs, .materialise_input, temp_dir = temp_dir)
+  cat_inputs <- purrr::map(cat_inputs, .materialise_input, temp_dir = temp_dir)
 
   all_names <- c(names(num_inputs), names(cat_inputs))
   all_inputs <- c(num_inputs, cat_inputs)
@@ -289,106 +276,72 @@ process_loi <- function(
 
   if (verbose) {
     cli::cli_alert_info(
-      "Processing layers of interest (LOI) across ",
-      n_cores,
-      " cores"
+      "Processing layers of interest (LOI) across {n_cores} cores"
     )
   }
 
-  ip <- list(
-    lyr_nms = as.list(all_names),
-    lyr = all_inputs,
-    lyr_variables = lyr_variables,
-    rln = as.list(all_types),
-    temp_dir = rep(list(temp_dir), length(all_names)),
-    temp_dir_save = rep(list(temp_dir_save), length(all_names)),
-    output_filename = rep(list(output_filename), length(all_names)),
-    overwrite = rep(list(overwrite), length(all_names)),
-    p = rep(list(NULL), length(all_names))
+  arg_list <- lapply(
+    seq_along(all_names),
+    function(i) {
+      list(
+        lyr_nms = all_names[[i]],
+        lyr = all_inputs[[i]],
+        lyr_variables = lyr_variables[[i]],
+        rln = all_types[[i]],
+        temp_dir = temp_dir,
+        temp_dir_save = temp_dir_save,
+        output_filename = output_filename,
+        overwrite = overwrite
+      )
+    }
   )
 
-  if (write_strategy == "batched") {
-    # ── Batched: process in chunks, drain to gpkg between chunks ────────
-    chunks <- split(
-      seq_along(all_names),
-      ceiling(seq_along(all_names) / max(n_cores, 1L))
-    )
-    future_proc <- vector("list", length(all_names))
+  progressr::handlers(progressr::handler_cli(
+    format = "{cli::pb_bar} {cli::pb_percent} | {cli::pb_eta_str}"
+  ))
+  progressr::with_progress(enable = verbose, {
+    p <- progressr::progressor(steps = length(arg_list))
 
-    progressr::with_progress(enable = verbose, {
-      p <- progressr::progressor(steps = length(all_names))
-      ip$p <- rep(list(p), length(all_names))
-
-      for (chunk in chunks) {
-        ip_chunk <- purrr::map(ip, `[`, chunk)
-
-        results_chunk <- furrr::future_pmap(
-          ip_chunk,
-          .options = furrr::furrr_options(
-            globals = FALSE,
-            seed = NULL,
-            scheduling = 1L
-          ),
-          process_single_loi_worker
-        )
-        future_proc[chunk] <- results_chunk
-
-        # Drain this batch's rasters to gpkg immediately
-        fl <- list.files(temp_dir_save, "\\.tif$", full.names = TRUE)
-        for (f in fl) {
-          r <- terra::rast(f)
-          if (verbose) {
-            cli::cli_alert_info("Writing: ", names(r))
-          }
-          res <- try(.write_raster_gpkg(r, output_filename), silent = TRUE)
-          if (inherits(res, "try-error")) {
-            msg <- cli::cli_alert_info(attr(res, "condition"))
-            if (!msg %in% c("stoi", "stol")) stop(msg)
-          }
-          file.remove(f)
-        }
-      }
+    arg_list <- lapply(arg_list, function(args) {
+      args$progressor <- p
+      args
     })
-  } else {
-    # ── Sequential: process all, then write ─────────────────────────────
-    progressr::with_progress(enable = verbose, {
-      p <- progressr::progressor(steps = length(all_names))
-      ip$p <- rep(list(p), length(all_names))
 
-      future_proc <- furrr::future_pmap(
-        ip,
-        .options = furrr::furrr_options(
-          globals = FALSE,
-          seed = NULL,
-          scheduling = 1L
-        ),
-        process_single_loi_worker
+    loi_futures <- lapply(arg_list, function(args) {
+      future::futureCall(
+        .process_single_loi_worker,
+        args = args,
+        seed = NULL,
+        globals = c("args"),
+        packages = c("sf", "terra", "ihydro")
       )
     })
 
+    future_proc <- lapply(loi_futures, future::value)
+  })
+
+  # ── Write outputs to gpkg sequentially ──────────────────────────────────
+  if (verbose) {
+    cli::cli_alert_info("Writing outputs")
+  }
+  fl <- list.files(temp_dir_save, "\\.tif$", full.names = TRUE)
+  for (f in fl) {
+    r <- terra::rast(f)
     if (verbose) {
-      cli::cli_alert_info("Writing outputs")
+      cli::cli_alert_info("Writing: {names(r)}")
     }
-    fl <- list.files(temp_dir_save, "\\.tif$", full.names = TRUE)
-    for (f in fl) {
-      r <- terra::rast(f)
-      if (verbose) {
-        cli::cli_alert_info("Writing: ", names(r))
-      }
-      res <- try(.write_raster_gpkg(r, output_filename), silent = TRUE)
-      if (inherits(res, "try-error")) {
-        msg <- cli::cli_alert_info(attr(res, "condition"))
-        if (!msg %in% c("stoi", "stol")) stop(msg)
-      }
-      file.remove(f)
+    res <- try(.write_raster_gpkg(r, output_filename), silent = TRUE)
+    if (inherits(res, "try-error")) {
+      msg <- attr(res, "condition")$message
+      if (!msg %in% c("stoi", "stol")) cli::cli_abort(msg)
     }
+    file.remove(f)
   }
 
-  ot <- future_proc
-  names(ot) <- all_names
+  names(future_proc) <- all_names
 
   meta <- purrr::map_dfr(
-    ot,
+    future_proc,
     ~ tibble::tibble(
       loi_lyr_nms = .x[["lyr_nms"]],
       loi_var_nms = .x[["lyr_variables"]],
@@ -452,7 +405,7 @@ process_loi <- function(
 
 #' Write in-memory R objects to disk so workers can read them
 #' @noRd
-materialise_input <- function(x, temp_dir) {
+.materialise_input <- function(x, temp_dir) {
   if (inherits(x, "character")) {
     return(x)
   }
@@ -474,7 +427,7 @@ materialise_input <- function(x, temp_dir) {
 
 #' Worker function for processing a single LOI
 #' @noRd
-process_single_loi_worker <- carrier::crate(
+.process_single_loi_worker <- carrier::crate(
   function(
     lyr_nms,
     lyr,
@@ -484,7 +437,7 @@ process_single_loi_worker <- carrier::crate(
     temp_dir_save,
     output_filename,
     overwrite,
-    p
+    progressor = NULL
   ) {
     temp_sub <- file.path(temp_dir, basename(tempfile()))
     dir.create(temp_sub)
@@ -524,7 +477,10 @@ process_single_loi_worker <- carrier::crate(
     }
 
     unlink(temp_sub, recursive = TRUE, force = TRUE)
-    p()
+
+    if (!is.null(progressor)) {
+      progressor()
+    }
 
     list(
       lyr_nms = lyr_nms,

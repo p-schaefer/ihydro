@@ -21,15 +21,15 @@
 #'
 #' @export
 ex_data <- function(
-    layer = c(
-      "elev_ned_30m.tif",
-      "geology.shp",
-      "lakes.shp",
-      "landuse_r.tif",
-      "pointsources.shp",
-      "sites_nc.shp",
-      "streams.shp"
-    )
+  layer = c(
+    "elev_ned_30m.tif",
+    "geology.shp",
+    "lakes.shp",
+    "landuse_r.tif",
+    "pointsources.shp",
+    "sites_nc.shp",
+    "streams.shp"
+  )
 ) {
   layer <- match.arg(layer)
 
@@ -42,7 +42,14 @@ ex_data <- function(
     utils::unzip(list = TRUE)
 
   ex_files <- ex_files$Name[grepl("\\.shp|\\.tif", ex_files$Name)]
-  stopifnot(layer %in% basename(ex_files))
+  if (!layer %in% basename(ex_files)) {
+    cli::cli_abort(
+      c(
+        "{.arg layer} must be a valid example file name.",
+        "i" = "Valid options are: {.val {basename(ex_files)}}."
+      )
+    )
+  }
 
   final_file <- file.path(
     "/vsizip",
@@ -61,4 +68,3 @@ ex_data <- function(
     "tif" = terra::rast(final_file)
   )
 }
-

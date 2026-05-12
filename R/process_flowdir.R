@@ -146,11 +146,17 @@ process_flowdir <- function(
   if (!is.null(min_length) && !is.numeric(min_length)) {
     cli::cli_abort("{.arg min_length} must be numeric.")
   }
-  stopifnot(
-    is.logical(return_products),
-    is.logical(compress),
-    is.logical(verbose)
-  )
+  if (!is.logical(return_products)) {
+    cli::cli_abort(
+      "{.arg return_products} must be {.code TRUE} or {.code FALSE}."
+    )
+  }
+  if (!is.logical(compress)) {
+    cli::cli_abort("{.arg compress} must be {.code TRUE} or {.code FALSE}.")
+  }
+  if (!is.logical(verbose)) {
+    cli::cli_abort("{.arg verbose} must be {.code TRUE} or {.code FALSE}.")
+  }
 
   output_filename <- normalizePath(output_filename, mustWork = FALSE)
   if (!grepl("\\.gpkg$", output_filename)) {
@@ -641,7 +647,7 @@ burn_dem <- function(
     sr1 <- terra::mask(
       dem_final,
       burn_streams |>
-        sf::st_as_sf()|>
+        sf::st_as_sf() |>
         sf::st_buffer(resol * 1) |>
         terra::vect()
     )

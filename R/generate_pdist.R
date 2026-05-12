@@ -98,10 +98,19 @@ generate_pdist <- function(
 ) {
   .check_ihydro(input)
 
-  stopifnot(is.logical(verbose), is.logical(pwise_all_links))
+  if (!is.logical(verbose)) {
+    cli::cli_abort("{.arg verbose} must be {.code TRUE} or {.code FALSE}.")
+  }
+  if (!is.logical(pwise_all_links)) {
+    cli::cli_abort(
+      "{.arg pwise_all_links} must be {.code TRUE} or {.code FALSE}."
+    )
+  }
 
   if (pwise_all_links) {
-    cli::cli_alert_info("pwise_all_links = TRUE can be very slow for large datasets.")
+    cli::cli_alert_info(
+      "pwise_all_links = TRUE can be very slow for large datasets."
+    )
   }
 
   db_fp <- input$outfile

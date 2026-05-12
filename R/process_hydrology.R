@@ -1,7 +1,6 @@
-#' Generate all hydrology products from a DEM
+#' Process Hydrology
 #'
-#' Convenience wrapper that calls [process_flowdir()], [generate_vectors()],
-#' and [trace_flowpaths()] in sequence.
+#' This function processes hydrology data by performing flow direction analysis, generating vectors, and tracing flowpaths. It takes a digital elevation model (DEM) and various parameters to customize the processing steps. The function returns an `ihydro` object containing the processed hydrology data.
 #'
 #' @inheritParams process_flowdir
 #' @inheritParams generate_vectors
@@ -52,6 +51,10 @@ process_hydrology <- function(
   burn_depth = NULL,
   burn_slope_dist = NULL,
   burn_slope_depth = NULL,
+  stream_keep_thresh = NULL,
+  chunk_size = 250,
+  stream_keep_burnbuff = 25,
+  stream_keep_dembuff = 1,
   min_length = NULL,
   depression_corr = c(NULL, "fill", "breach"),
   extra_attr = c(
@@ -104,20 +107,38 @@ process_hydrology <- function(
   if (!is.null(min_length) && !is.numeric(min_length)) {
     cli::cli_abort("{.arg min_length} must be numeric.")
   }
-  stopifnot(
-    is.logical(return_products),
-    is.logical(compress),
-    is.logical(verbose)
-  )
+  if (!is.logical(return_products)) {
+    cli::cli_abort(
+      "{.arg return_products} must be {.code TRUE} or {.code FALSE}."
+    )
+  }
+  if (!is.logical(compress)) {
+    cli::cli_abort("{.arg compress} must be {.code TRUE} or {.code FALSE}.")
+  }
+  if (!is.logical(verbose)) {
+    cli::cli_abort("{.arg verbose} must be {.code TRUE} or {.code FALSE}.")
+  }
   burn_depth <- as.integer(burn_depth)
 
-  stopifnot(
-    is.logical(pwise_dist),
-    is.logical(return_products),
-    is.logical(compress),
-    is.logical(break_on_noSnap),
-    is.logical(verbose)
-  )
+  if (!is.logical(pwise_dist)) {
+    cli::cli_abort("{.arg pwise_dist} must be {.code TRUE} or {.code FALSE}.")
+  }
+  if (!is.logical(return_products)) {
+    cli::cli_abort(
+      "{.arg return_products} must be {.code TRUE} or {.code FALSE}."
+    )
+  }
+  if (!is.logical(compress)) {
+    cli::cli_abort("{.arg compress} must be {.code TRUE} or {.code FALSE}.")
+  }
+  if (!is.logical(break_on_noSnap)) {
+    cli::cli_abort(
+      "{.arg break_on_noSnap} must be {.code TRUE} or {.code FALSE}."
+    )
+  }
+  if (!is.logical(verbose)) {
+    cli::cli_abort("{.arg verbose} must be {.code TRUE} or {.code FALSE}.")
+  }
 
   if (!is.null(points)) {
     points <- sf::st_as_sf(process_input(points))
@@ -143,6 +164,12 @@ process_hydrology <- function(
     threshold = threshold,
     burn_streams = burn_streams,
     burn_depth = burn_depth,
+    burn_slope_dist = burn_slope_dist,
+    burn_slope_depth = burn_slope_depth,
+    stream_keep_thresh = stream_keep_thresh,
+    chunk_size = chunk_size,
+    stream_keep_burnbuff = stream_keep_burnbuff,
+    stream_keep_dembuff = stream_keep_dembuff,
     min_length = min_length,
     depression_corr = depression_corr,
     return_products = return_products,

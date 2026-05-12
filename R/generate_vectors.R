@@ -120,11 +120,15 @@ generate_vectors <- function(
   verbose = FALSE
 ) {
   .check_ihydro(input)
-  stopifnot(
-    is.logical(return_products),
-    is.logical(verbose),
-    is.logical(compress)
-  )
+  if (!is.logical(return_products)) {
+    cli::cli_abort("{.arg return_products} must be {.code TRUE} or {.code FALSE}.")
+  }
+  if (!is.logical(verbose)) {
+    cli::cli_abort("{.arg verbose} must be {.code TRUE} or {.code FALSE}.")
+  }
+  if (!is.logical(compress)) {
+    cli::cli_abort("{.arg compress} must be {.code TRUE} or {.code FALSE}.")
+  }
 
   if (!is.null(points)) {
     validate_site_id_col(site_id_col)

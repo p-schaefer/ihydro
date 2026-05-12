@@ -35,15 +35,25 @@ attrib_streamline <- function(
     if (!is.numeric(snap_distance)) {
       cli::cli_abort("{.arg snap_distance} must be numeric.")
     }
-    stopifnot(is.logical(break_on_noSnap))
+    if (!is.logical(break_on_noSnap)) {
+      cli::cli_abort(
+        "{.arg break_on_noSnap} must be {.code TRUE} or {.code FALSE}."
+      )
+    }
   } else {
     site_id_col <- "link_id"
   }
-  stopifnot(
-    is.logical(return_products),
-    is.logical(verbose),
-    is.logical(compress)
-  )
+  if (!is.logical(return_products)) {
+    cli::cli_abort(
+      "{.arg return_products} must be {.code TRUE} or {.code FALSE}."
+    )
+  }
+  if (!is.logical(verbose)) {
+    cli::cli_abort("{.arg verbose} must be {.code TRUE} or {.code FALSE}.")
+  }
+  if (!is.logical(compress)) {
+    cli::cli_abort("{.arg compress} must be {.code TRUE} or {.code FALSE}.")
+  }
 
   temp_dir <- .ensure_temp_dir(temp_dir)
   db_fp <- input$outfile

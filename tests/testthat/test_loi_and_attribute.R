@@ -34,6 +34,8 @@ test_that("process_loi and fasttrib_points produce attributes for sample points"
   )
 
   output_filename_loi <- file.path(ex_loc, "Processed_loi.gpkg")
+  if (file.exists(output_filename_loi)) file.remove(output_filename_loi)
+
   loi_combined <- ihydro::process_loi(
     dem = dem,
     num_inputs = list(slope = file.path(ex_loc, "LC.tif")),

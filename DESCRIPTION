@@ -34,7 +34,6 @@ Imports:
     rlang,
     RSQLite,
     sf,
-    stringr,
     terra,
     tibble,
     tidyr,
@@ -42,11 +41,14 @@ Imports:
     units,
     whitebox,
     sfheaders,
-    mirai,
     SSNbler,
     igraph,
     Matrix,
-    Hmisc
+    Hmisc,
+    dbplyr,
+    exactextractr,
+    stats,
+    utils
 Depends:
     R (>= 4.2.0)
 Suggests:

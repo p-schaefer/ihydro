@@ -2,7 +2,9 @@
 % Please edit documentation in R/process_loi.R
 \name{process_loi}
 \alias{process_loi}
-\title{Process layers of interest (LOI) for stream network attribution}
+\title{When run in parallel, the function processes each LOI independently across multiple cores.
+All layers are processed in parallel first, then written to the GeoPackage in a single
+sequential pass.al.}
 \usage{
 process_loi(
   input = NULL,
@@ -13,7 +15,6 @@ process_loi(
   output_filename = NULL,
   variable_names = NULL,
   return_products = FALSE,
-  write_strategy = c("sequential", "batched"),
   temp_dir = NULL,
   verbose = FALSE,
   overwrite = TRUE
@@ -36,13 +37,6 @@ process_loi(
 
 \item{return_products}{Logical. Return raster products?}
 
-\item{write_strategy}{Character. How processed rasters are written to the
-GeoPackage. \code{"sequential"} (default) waits for all parallel workers to
-finish, then writes every raster to the GeoPackage in one pass — simplest
-and avoids nested-future connection warnings. \code{"batched"} processes layers
-in chunks of size \code{n_cores}, writing completed rasters to the GeoPackage
-between chunks to reduce peak temporary disk usage.}
-
 \item{temp_dir}{Temporary file directory.}
 
 \item{verbose}{Logical.}
@@ -54,18 +48,6 @@ An \code{ihydro} object.
 The contained rasters are the processed LOI layers, aligned to the DEM and saved in the specified GeoPackage. If \code{return_products} is \code{TRUE}, the rasters are also returned as \code{SpatRaster} objects within the \code{ihydro} object for immediate use in R.
 }
 \description{
-Standardises numeric and categorical landscape layers to match the DEM's
-resolution, extent, and CRS. Categorical layers are one-hot encoded.
-}
-\details{
-This function is designed to process any landscape layers of interest (LOI) that
-users want to attribute to the stream network. It can handle both numeric and
-categorical raster inputs, as well as vector inputs that will be rasterized.
-The processed layers are aligned to the DEM used for hydrological processing,
-ensuring consistency in resolution, extent, and CRS. Categorical layers are one-hot encoded
-to create separate binary rasters for each category. The processed layers are saved to a
-GeoPackage for efficient storage and retrieval.
-
 When run in parallel, the function processes each LOI independently across multiple cores.
 The \code{write_strategy} argument controls how processed rasters are persisted to the GeoPackage:
 \itemize{

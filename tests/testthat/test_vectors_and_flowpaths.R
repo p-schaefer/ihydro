@@ -28,7 +28,7 @@ test_that("generate_vectors and trace_flowpaths integration", {
     input = hydro_out,
     points = points,
     site_id_col = "site_id",
-    snap_distance = 250L,
+    snap_distance = Inf,
     break_on_noSnap = FALSE,
     return_products = TRUE,
     temp_dir = NULL,

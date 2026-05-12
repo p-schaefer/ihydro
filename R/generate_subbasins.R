@@ -9,7 +9,14 @@ generate_subbasins <- function(
   verbose = FALSE
 ) {
   .check_ihydro(input)
-  stopifnot(is.logical(return_products), is.logical(verbose))
+  if (!is.logical(return_products)) {
+    cli::cli_abort(
+      "{.arg return_products} must be {.code TRUE} or {.code FALSE}."
+    )
+  }
+  if (!is.logical(verbose)) {
+    cli::cli_abort("{.arg verbose} must be {.code TRUE} or {.code FALSE}.")
+  }
 
   temp_dir <- .ensure_temp_dir(temp_dir)
   db_fp <- input$outfile

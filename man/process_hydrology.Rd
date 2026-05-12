@@ -2,7 +2,7 @@
 % Please edit documentation in R/process_hydrology.R
 \name{process_hydrology}
 \alias{process_hydrology}
-\title{Generate all hydrology products from a DEM}
+\title{Process Hydrology}
 \usage{
 process_hydrology(
   dem,
@@ -12,6 +12,10 @@ process_hydrology(
   burn_depth = NULL,
   burn_slope_dist = NULL,
   burn_slope_depth = NULL,
+  stream_keep_thresh = NULL,
+  chunk_size = 250,
+  stream_keep_burnbuff = 25,
+  stream_keep_dembuff = 1,
   min_length = NULL,
   depression_corr = c(NULL, "fill", "breach"),
   extra_attr = c("link_slope", "cont_slope", "USChnLn_To", "Elevation", "StOrd_Hack",
@@ -42,6 +46,9 @@ process_hydrology(
 \item{burn_slope_dist}{Numeric burn slope width in meters (default \code{NULL}).}
 
 \item{burn_slope_depth}{Numeric burn slope depth in map elevation units (default \code{NULL}).}
+
+\item{stream_keep_thresh}{Numeric minimum proportion of overlap between \code{burn_streams}
+and stream segments extracted from DEM to keep in final stream layer (see details)}
 
 \item{min_length}{Numeric. Minimum tributary length in meters; shorter 1st-order
 tributaries are removed.}
@@ -75,8 +82,7 @@ file path?}
 An \code{ihydro} object.
 }
 \description{
-Convenience wrapper that calls \code{\link[=process_flowdir]{process_flowdir()}}, \code{\link[=generate_vectors]{generate_vectors()}},
-and \code{\link[=trace_flowpaths]{trace_flowpaths()}} in sequence.
+This function processes hydrology data by performing flow direction analysis, generating vectors, and tracing flowpaths. It takes a digital elevation model (DEM) and various parameters to customize the processing steps. The function returns an \code{ihydro} object containing the processed hydrology data.
 }
 \examples{
 \dontrun{

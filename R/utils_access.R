@@ -155,7 +155,14 @@ ihydro_layers <- function(input) {
 #'
 #' @export
 read_ihydro <- function(ihydro, layer, collect = TRUE) {
-  stopifnot(is.character(layer), length(layer) == 1L)
+  if (!is.character(layer)) {
+    cli::cli_abort("{.arg layer} must be a character string.")
+  }
+  if (length(layer) != 1L) {
+    cli::cli_abort(
+      "{.arg layer} must be a single string, not a vector of length {length(layer)}."
+    )
+  }
   .check_ihydro(ihydro)
   .check_ihydro_layer(ihydro, layer)
 

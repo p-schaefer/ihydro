@@ -189,8 +189,17 @@ fasttrib_points <- function(
   # ─ Validate inputs ───────────────────────────
   .check_ihydro(input)
 
-  stopifnot(mem_fraction < 0.9 | mem_fraction > 0.1)
-  stopifnot(all(quantiles <= 1) & all(quantiles >= 0))
+  if (!is.logical(verbose)) {
+    cli::cli_abort("{.arg verbose} must be {.code TRUE} or {.code FALSE}.")
+  }
+  if (!(mem_fraction > 0.1 & mem_fraction < 0.9)) {
+    cli::cli_abort(
+      "{.arg mem_fraction} must be between 0.1 and 0.9, not {mem_fraction}."
+    )
+  }
+  if (!all(quantiles >= 0 & quantiles <= 1)) {
+    cli::cli_abort("All values in {.arg quantiles} must be between 0 and 1.")
+  }
 
   loi_numeric_stats <- match.arg(
     loi_numeric_stats,
@@ -355,7 +364,9 @@ fasttrib_points <- function(
   if (is.null(n_batches)) {
     n_batches <- ceiling(length(unique(subb_lookup$link_id)) / 4)
   } else {
-    stopifnot(is.numeric(n_batches))
+    if (!is.numeric(n_batches)) {
+      cli::cli_abort("{.arg n_batches} must be numeric.")
+    }
     n_batches <- round(n_batches)
   }
 
@@ -380,7 +391,6 @@ fasttrib_points <- function(
   if (verbose) {
     cli::cli_alert_info("Extracting attributes for each subbasin.")
   }
-  #browser()
 
   subbs <- read_ihydro(input, "Subbasins_poly")
   subbs$link_id <- as.numeric(subbs$link_id) * 1000
@@ -458,7 +468,6 @@ fasttrib_points <- function(
   extract_value_comb$ws_o <- tibble::tibble()
   extract_value_comb$ws_lump <- dplyr::bind_rows(extract_value[ws_lump_nms])
 
-  browser()
   if (length(ws_s_nms) > 0) {
     temp_comb <- list()
     ws_comb <- dplyr::bind_rows(extract_value[ws_s_nms])
@@ -556,7 +565,8 @@ fasttrib_points <- function(
   if (!is.null(out_filename)) {
     write.csv(
       result,
-      out_filename
+      out_filename,
+      row.names = FALSE
     )
   }
 
@@ -645,7 +655,6 @@ fasttrib_points <- function(
         link_id_otarget = link_id,
         subbasin_link_id = NA_character_
       )
-
     } else {
       subbsn_rast <- terra::unwrap(subbsn_rast)
       pairs <- tibble::tibble(
