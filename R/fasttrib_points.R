@@ -477,6 +477,7 @@ fasttrib_points <- function(
         ws_comb,
         tidyselect::contains(c("iFLO", "HAiFLO")),
         subbasin_link_id,
+        batch,
         -link_id_otarget
       )
 
@@ -542,7 +543,7 @@ fasttrib_points <- function(
     extract_value_comb$ws_s <- purrr::reduce(
       temp_comb,
       dplyr::left_join,
-      by = c("link_id_otarget", "subbasin_link_id")
+      by = c("link_id_otarget", "subbasin_link_id","batch")
     )
   }
 
@@ -935,7 +936,7 @@ fasttrib_points <- function(
     }
   )
 
-  batch_results <- lapply(batch_results, purrr::list_rbind)
+  batch_results <- lapply(batch_results, purrr::list_rbind, names_to = "batch" )
   purrr::list_rbind(batch_results)
 }
 
@@ -1269,7 +1270,7 @@ fasttrib_points <- function(
             )
           }
           if ("sd" %in% loi_numeric_stats) {
-            res[[paste0(var, "_", ws, "_sd")]] <- combine_weighted_sample_sd(
+            res[[paste0(var, "_", ws, "_sd")]] <- combine_weighted_sd( #combine_weighted_sample_sd
               sub_mean,
               sub_var,
               sub_wt,

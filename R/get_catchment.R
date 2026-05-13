@@ -109,11 +109,7 @@ get_catchment <- function(
 
   if (verbose) {
     cli::cli_alert_info(
-      "Generating catchments for ",
-      nrow(still_needed),
-      " targets (",
-      nrow(already_done),
-      " already cached)"
+      "Generating catchments for {.val {nrow(still_needed)}} targets ({.val {nrow(already_done)}} already cached)."
     )
   }
   # ── Compute missing catchments in parallel ──────────────────────────────
