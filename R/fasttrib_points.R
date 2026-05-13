@@ -162,29 +162,29 @@
 #'
 
 fasttrib_points <- function(
-  input,
-  out_filename = NULL,
-  loi_file = NULL,
-  loi_cols = NULL,
-  iDW_file = NULL,
-  sample_points = NULL,
-  link_id = NULL,
-  weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"),
-  loi_numeric_stats = c(
-    "mean",
-    "sd",
-    "variance",
-    "median",
-    "min",
-    "max",
-    "sum"
-  ),
-  quantiles = NULL,
-  mem_fraction = 0.5,
-  n_batches = NULL,
-  temp_dir = NULL,
-  verbose = FALSE,
-  ...
+    input,
+    out_filename = NULL,
+    loi_file = NULL,
+    loi_cols = NULL,
+    iDW_file = NULL,
+    sample_points = NULL,
+    link_id = NULL,
+    weighting_scheme = c("lumped", "iFLS", "HAiFLS", "iFLO", "HAiFLO"),
+    loi_numeric_stats = c(
+      "mean",
+      "sd",
+      "variance",
+      "median",
+      "min",
+      "max",
+      "sum"
+    ),
+    quantiles = NULL,
+    mem_fraction = 0.5,
+    n_batches = NULL,
+    temp_dir = NULL,
+    verbose = FALSE,
+    ...
 ) {
   # ─ Validate inputs ───────────────────────────
   .check_ihydro(input)
@@ -761,15 +761,15 @@ fasttrib_points <- function(
 #' @return A tibble with one row per `link_id`.
 #' @noRd
 .proc_batch <- function(
-  link_id,
-  sub_sel = NULL,
-  subbsn_rast,
-  all_rasts,
-  numb_rast,
-  cat_rast,
-  iDW_cols,
-  stat_fns,
-  pairs
+    link_id,
+    sub_sel = NULL,
+    subbsn_rast,
+    all_rasts,
+    numb_rast,
+    cat_rast,
+    iDW_cols,
+    stat_fns,
+    pairs
 ) {
   # Don't know why round is necessary here
   cells <- terra::cells(
@@ -827,15 +827,23 @@ fasttrib_points <- function(
   }
 
   for (i in seq_len(nrow(pairs))) {
+    v1 <- try(suppressWarnings(Hmisc::wtd.var(
+      vals[[pairs[[1]][i]]],
+      vals[[pairs[[2]][i]]],
+      method = "ML" # This returns population level variance
+    )),
+    silent = TRUE)
+
+    if (inherits(v1,"try-error")) {
+      v1 <- NA_real_
+    }
+
     out[[length(out) + 1]] <- tibble::tibble(
       weighted_mean = suppressWarnings(Hmisc::wtd.mean(
         vals[[pairs[[1]][i]]],
         vals[[pairs[[2]][i]]]
       )),
-      weighted_variance = suppressWarnings(Hmisc::wtd.var(
-        vals[[pairs[[1]][i]]],
-        vals[[pairs[[2]][i]]]
-      )),
+      weighted_variance = v1,
       weighted_sum = sum(
         vals[[pairs[[1]][i]]] * vals[[pairs[[2]][i]]],
         na.rm = T
@@ -880,15 +888,15 @@ fasttrib_points <- function(
 #' @return A tibble with one row per `link_id`.
 #' @noRd
 .extract_subbasin_stats <- function(
-  link_ids,
-  subbsn_rast,
-  all_rasts,
-  numb_rast,
-  cat_rast,
-  iDW_cols,
-  pairs,
-  stat_fns,
-  max_cells_in_memory
+    link_ids,
+    subbsn_rast,
+    all_rasts,
+    numb_rast,
+    cat_rast,
+    iDW_cols,
+    pairs,
+    stat_fns,
+    max_cells_in_memory
 ) {
   # Count cells per link_id
   cell_counts <- lapply(
@@ -943,31 +951,31 @@ fasttrib_points <- function(
 #' Create subbasin extraction plan
 #' @noRd
 .extract_planner <- function(
-  input,
-  subb_ids,
-  loi_rast_input,
-  numb_rast,
-  cat_rast,
-  iDW_rast_input,
-  iDW_cols,
-  mem_fraction = 0.5,
-  n_cores = 1L,
-  chunks_per_worker = 1L,
-  fun = c(
-    "mean",
-    "sd",
-    "var",
-    "cv",
-    "min",
-    "max",
-    "sum",
-    "count",
-    "median",
-    "quantile"
-  ),
-  quantiles = NULL,
-  temp_dir = NULL,
-  verbose = FALSE
+    input,
+    subb_ids,
+    loi_rast_input,
+    numb_rast,
+    cat_rast,
+    iDW_rast_input,
+    iDW_cols,
+    mem_fraction = 0.5,
+    n_cores = 1L,
+    chunks_per_worker = 1L,
+    fun = c(
+      "mean",
+      "sd",
+      "var",
+      "cv",
+      "min",
+      "max",
+      "sum",
+      "count",
+      "median",
+      "quantile"
+    ),
+    quantiles = NULL,
+    temp_dir = NULL,
+    verbose = FALSE
 ) {
   fun <- match.arg(fun, several.ok = TRUE)
 
@@ -1150,11 +1158,11 @@ fasttrib_points <- function(
 #' @return Tibble with one row per catchment (link_id_otarget), columns for each summary
 #' @noRd
 .summarize_catchment <- function(
-  extract_value,
-  weighting_scheme,
-  loi_numeric_stats,
-  numeric_vars,
-  cat_vars
+    extract_value,
+    weighting_scheme,
+    loi_numeric_stats,
+    numeric_vars,
+    cat_vars
 ) {
   # Helper: Pivot and clean
   clean_data <- function(df) {
