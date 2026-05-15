@@ -1278,7 +1278,7 @@ fasttrib_points <- function(
             )
           }
           if ("sd" %in% loi_numeric_stats) {
-            res[[paste0(var, "_", ws, "_sd")]] <- combine_weighted_sd( #combine_weighted_sample_sd
+            res[[paste0(var, "_", ws, "_sd")]] <- combine_weighted_sample_sd( #combine_weighted_sample_sd
               sub_mean,
               sub_var,
               sub_wt,

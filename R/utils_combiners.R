@@ -23,7 +23,7 @@ combine_lumped_mean <- function(sub_mean, sub_n, cnt) {
 #' Combine unweighted population variances across chunks (denominator N, variance input)
 #' @noRd
 combine_lumped_var <- function(sub_mean, sub_var, sub_n, cnt) {
-  cln <- .rem_na_helper(sub_mean, sub_var, sub_n, cnt, rem_one = FALSE)
+  cln <- .rem_na_helper(sub_mean, sub_var, sub_n, cnt, rem_one = TRUE)
   sub_mean <- cln$sub_mean
   sub_var <- cln$sub_var
   sub_n <- cln$sub_n
@@ -41,7 +41,7 @@ combine_lumped_sd <- function(sub_mean, sub_var, sub_n, cnt) {
 #' Combine unweighted sample variances across chunks (denominator N-1, variance input)
 #' @noRd
 combine_lumped_sample_var <- function(sub_mean, sub_var, sub_n, cnt) {
-  cln <- .rem_na_helper(sub_mean, sub_var, sub_n, cnt, rem_one = FALSE)
+  cln <- .rem_na_helper(sub_mean, sub_var, sub_n, cnt, rem_one = TRUE)
   sub_mean <- cln$sub_mean
   sub_var <- cln$sub_var
   sub_n <- cln$sub_n
@@ -73,7 +73,7 @@ combine_weighted_mean <- function(sub_mean, sub_wt, cnt) {
 #' Combine weighted population variances across chunks (denominator W, variance input)
 #' @noRd
 combine_weighted_var <- function(sub_mean, sub_var, sub_wt, cnt) {
-  cln <- .rem_na_helper(sub_mean, sub_var, sub_wt, cnt, rem_one = FALSE)
+  cln <- .rem_na_helper(sub_mean, sub_var, sub_wt, cnt, rem_one = TRUE)
   sub_mean <- cln$sub_mean
   sub_var <- cln$sub_var
   sub_wt <- cln$sub_wt
@@ -96,7 +96,7 @@ combine_weighted_sd <- function(sub_mean, sub_var, sub_wt, cnt) {
 #' Combine weighted sample variances across chunks (unbiased, denominator W-1, variance input)
 #' @noRd
 combine_weighted_sample_var <- function(sub_mean, sub_var, sub_wt, cnt) {
-  cln <- .rem_na_helper(sub_mean, sub_var, sub_wt, cnt, rem_one = FALSE)
+  cln <- .rem_na_helper(sub_mean, sub_var, sub_wt, cnt, rem_one = TRUE)
   sub_mean <- cln$sub_mean
   sub_var <- cln$sub_var
   sub_wt <- cln$sub_wt
