@@ -236,22 +236,30 @@ process_loi <- function(
     rep("cat_rast", length(cat_inputs))
   )
 
-  if (!is.null(variable_names)) {
-    lyr_variables <- variable_names[all_names]
+  # Resolve individual layer names for every input source.
+  # process_input() is called here for metadata only (no align_to/clip_region)
+  # to discover the full set of layer names, which are then subsetted by
+  # variable_names if provided.
+  lyr_variables <- lapply(seq_along(all_names), function(i) {
+    nm <- all_names[[i]]
+    src <- all_inputs[[i]]
 
-    for (nm in names(variable_names)) {
-      ip <- process_input(all_inputs[[nm]])
-      ip <- terra::subset(ip, variable_names[[nm]])
-      if (!variable_names[[nm]] %in% names(ip)) {
+    all_lyrs <- names(process_input(src))
+
+    requested <- variable_names[[nm]]
+    if (!is.null(requested)) {
+      missing_lyrs <- setdiff(requested, all_lyrs)
+      if (length(missing_lyrs) > 0) {
         cli::cli_abort(
-          "Variable {.val {variable_names[[nm]]}} not found in input {.val {nm}}."
+          "Variable(s) {.val {missing_lyrs}} not found in input {.val {nm}}."
         )
       }
+      requested
+    } else {
+      all_lyrs
     }
-  } else {
-    lyr_variables <- rep(list(NA_character_), length(all_names))
-  }
-  lyr_variables[sapply(lyr_variables, is.null)] <- list(NA_character_)
+  })
+  names(lyr_variables) <- all_names
 
   # ── Create gpkg if needed ───────────────────────────────────────────────
   if (!file.exists(output_filename)) {
@@ -280,20 +288,22 @@ process_loi <- function(
     )
   }
 
-  arg_list <- lapply(
-    seq_along(all_names),
-    function(i) {
-      list(
-        lyr_nms = all_names[[i]],
-        lyr = all_inputs[[i]],
-        lyr_variables = lyr_variables[[i]],
-        rln = all_types[[i]],
-        temp_dir = temp_dir,
-        temp_dir_save = temp_dir_save,
-        output_filename = output_filename,
-        overwrite = overwrite
-      )
-    }
+  arg_list <- unlist(
+    lapply(seq_along(all_names), function(i) {
+      lapply(lyr_variables[[i]], function(lyr_nm) {
+        list(
+          lyr_nms = all_names[[i]],
+          lyr = all_inputs[[i]],
+          lyr_variables = lyr_nm,
+          rln = all_types[[i]],
+          temp_dir = temp_dir,
+          temp_dir_save = temp_dir_save,
+          output_filename = output_filename,
+          overwrite = overwrite
+        )
+      })
+    }),
+    recursive = FALSE
   )
 
   progressr::handlers(progressr::handler_cli(
@@ -338,8 +348,7 @@ process_loi <- function(
     file.remove(f)
   }
 
-  names(future_proc) <- all_names
-
+  # future_proc is now flat: one element per individual layer
   meta <- purrr::map_dfr(
     future_proc,
     ~ tibble::tibble(
