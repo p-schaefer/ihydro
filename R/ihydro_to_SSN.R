@@ -293,12 +293,6 @@ ihydro_to_ssn <- function(
   sites <- read_ihydro(ihydro_obj, "stream_links")
 
   if (!is.null(obs)) {
-    if (inherits(obs, "sf")) {
-      cli::cli_abort("{.arg obs} must not be a class {.cls sf}")
-    }
-    if (!inherits(obs, "data.frame")) {
-      cli::cli_abort("{.arg obs} must be a {.cls data.frame}")
-    }
     if (!"link_id" %in% colnames(obs)) {
       cli::cli_abort("{.arg obs} must contain a {.code link_id} column")
     }
@@ -310,21 +304,23 @@ ihydro_to_ssn <- function(
       ))
     }
 
-    obs$link_id <- as.character(obs$link_id)
+    if (!inherits(obs, "sf")) {
+      #cli::cli_abort("{.arg obs} must not be a class {.cls sf}")
+      if (!inherits(obs, "data.frame")) {
+        cli::cli_abort("{.arg obs} must be a {.cls data.frame}")
+      }
 
-    site_list$obs <- dplyr::right_join(
-      sites,
-      obs,
-      by = "link_id"
-    )
+      obs$link_id <- as.character(obs$link_id)
+
+      site_list$obs <- dplyr::right_join(
+        sites,
+        obs,
+        by = "link_id"
+      )
+    }
   }
+
   if (!is.null(pred)) {
-    if (inherits(pred, "sf")) {
-      cli::cli_abort("{.arg obs} must not be a class {.cls sf}")
-    }
-    if (!inherits(pred, "data.frame")) {
-      cli::cli_abort("{.arg pred} must be a {.cls data.frame}")
-    }
     if (!"link_id" %in% colnames(pred)) {
       cli::cli_abort("{.arg pred} must contain a {.code link_id} column")
     }
@@ -336,13 +332,21 @@ ihydro_to_ssn <- function(
       ))
     }
 
-    pred$link_id <- as.character(pred$link_id)
+    if (!inherits(pred, "sf")) {
+      #cli::cli_abort("{.arg obs} must not be a class {.cls sf}")
+      if (!inherits(pred, "data.frame")) {
+        cli::cli_abort("{.arg pred} must be a {.cls data.frame}")
+      }
 
-    site_list$pred <- dplyr::right_join(
-      sites,
-      pred,
-      by = "link_id"
-    )
+      pred$link_id <- as.character(pred$link_id)
+
+      site_list$pred <- dplyr::right_join(
+        sites,
+        pred,
+        by = "link_id"
+      )
+    }
+
   }
 
   return(site_list)
