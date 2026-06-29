@@ -362,7 +362,7 @@ fasttrib_points <- function(
   fun_sel <- unique(c("sum", loi_numeric_stats))
 
   if (is.null(n_batches)) {
-    n_batches <- ceiling(length(unique(subb_lookup$link_id)) / 4)
+    n_batches <- ceiling(length(unique(subb_lookup$link_id)) / n_cores)
   } else {
     if (!is.numeric(n_batches)) {
       cli::cli_abort("{.arg n_batches} must be numeric.")
