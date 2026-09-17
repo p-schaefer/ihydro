@@ -40,8 +40,6 @@ ihydro: Integrated hydrology tools for environmental science
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# ihydro <img src="man/figures/logo.png" align="right" width="280"/>
-
 <!-- badges: start -->
 
 [![Lifecycle:
